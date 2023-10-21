@@ -1,0 +1,112 @@
+<?xml version="1.0" ?>
+<stuph xmlns="telnet://stuphmud.net/3"
+       xmlns:olc="telnet://stuphmud.net/world/3"
+       xmlns:search="telnet://stuphmud.net/world/zifnab/search"
+       xmlns:player="telnet://stuphmud.net/player/3"
+       xmlns:wizard="telnet://stuphmud.net/wizard/3">
+
+    <olc:zone vnum="0"
+              olc:attr="none"
+              xmlns="telnet://stuphmud.net/world/3x">
+
+        <commands>
+            <room vnum="3041">
+                <!-- Door State -->
+                <north closed="true"
+                       locked="true" />
+
+                <!-- Load -->
+                <mobile vnum="3047"
+                        maximum="100">
+                    <!-- Equip -->
+                    <item vnum="3052"
+                          position="wielded" />
+                    <!-- Give -->
+                    <item vnum="3014" />
+                </mobile>
+
+                <remove item="3025" />
+            </room>
+        </commands>
+    </olc:zone>
+
+    <olc:zone vnum="30">
+        <room vnum="3001"
+              name="The Rivendale Town Square"
+              peaceful="true">
+
+            <north room="3002" />
+            <description keywords="mountains">
+                <![CDATA[[ You see mountains. ]]>
+            </description>
+
+            <!-- Searches -->
+            <search:on command="open"
+                       keywords="passage"
+                       match="sensitive|insensitive|normal"
+                       reset="never|zone|always">
+                <requires item="3045" />
+
+                <!-- Simple Text -->
+                <act to="actor">You do this to $o.</act>
+                <act to="room">$n does that.</act>
+
+                <open exit="north" />
+                <close exit="north" lock="true">
+                    <act to="actor" />
+                    <act to="actor.room" /><!-- Why would this be different? -->
+
+                    <!-- TO_CHAR|TO_ROOM -->
+                    <act to="room" />
+                    <act to="exit.room" />
+                </close>
+                <toggle exit="north" />
+
+                <create item="3022">
+                    <respawn>
+                        <act to="actor" />
+                        <act to="actor.room" />
+                    </respawn>
+
+                    <!-- Mutually exclusive with respawn -->
+                    <act to="actor" />
+                    <act to="actor.room" />
+                </create>
+
+                <teleport room="3088">
+                    <departure>
+                        <act to="actor" />
+                        <act to="actor.room" />
+                    </departure>
+                    <arrival>
+                        <act to="actor" />
+                        <act to="actor.room" />
+                    </arrival>
+                </teleport>
+            </search:on>
+        </room>
+    </olc:zone>
+
+    <wizard:command verb="do-*this"
+                    action="emote"
+                    level="supreme">
+
+        <code source="somehow-reference-this"
+              type="text/girl|python|javascript" />
+
+    </wizard:command>
+
+    <wizard:library name="mobprogs">
+        <script name="Ash" language="python" />
+        <script for="mobile:3042" event="onPeriod"
+                source="mobprogs:ash" />
+
+        <script attach="room:3001" event="onCommand"
+                lang="girl">
+
+            # Send a message to the room.
+            @here:announce $n does, '${command}'
+
+        </script>
+    </wizard:library>
+</stuph>
