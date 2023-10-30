@@ -7,7 +7,11 @@
 
 from stuphmud.server.player.interfaces.dictcmd import CmdDict
 
-from stuphos.kernel import Girl, Script, GirlSystemModule
+try: from stuphos.kernel import Girl, Script, GirlSystemModule
+except ImportError:
+    class Script:
+        pass
+
 from stuphos.system.api import mudlog
 from stuphos.runtime.architecture.api import writeprotected, wrapper
 from stuphos.etc.tools import isYesValue

@@ -308,9 +308,9 @@ def indent(string, tab = '    ', level = 1):
 class Indent: # (Object):
     DEFAULT_TAB = '    ' # four -- inline with python's default
 
-    def __init__(self, tab = None):
+    def __init__(self, tab = None, level = 1):
         self.amount = tab or self.DEFAULT_TAB
-        self.level = 0
+        self.level = level
 
     def getAttributeString(self):
         return 'level: %d (%r)' % (self.level, self.amount)
@@ -356,8 +356,8 @@ class Indent: # (Object):
         return self.amount + ('\n' + self.amount).join(text.split('\n'))
 
     @classmethod
-    def Paragraph(self, text, tab = None):
-        return self(tab = tab).paragraph(text)
+    def Paragraph(self, text, tab = None, **kwd):
+        return self(tab = tab, **kwd).paragraph(text)
 
     # class Buffer(Object, StringBufferType):
     #     # Maintains a StringIO buffer and also an indent state.
