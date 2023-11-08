@@ -346,7 +346,7 @@ class Statement(list):
 # 			from stuphos.kernel import Girl
 # 			return self._grammarClass().parse \
 # 				(Girl.Expression.prebuiltGrammar \
-# 					.parse(self.source))
+# 					.parse(self.node))
 
 
 def _syntaxOf(i):
