@@ -337,6 +337,17 @@ class Statement(list):
 
 				return task
 
+# class lexicalTree_precedence_Statement(Statement):
+# 	class Emulated(extension):
+# 		# _grammarClass = None
+
+# 		@property
+# 		def compiled(self):
+# 			from stuphos.kernel import Girl
+# 			return self._grammarClass().parse \
+# 				(Girl.Expression.prebuiltGrammar \
+# 					.parse(self.source))
+
 
 def _syntaxOf(i):
 	# print i
