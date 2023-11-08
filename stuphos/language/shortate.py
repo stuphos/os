@@ -66,7 +66,7 @@ def insertColons(source):
 		yield ln
 
 
-def parse(source):
+def parse(source, tokenize = tokenize):
 	# XXX this is actually quirky with the tokenizer, because it's a single COLON,
 	# so technically, all single-identifier token lines will always parse as TEXT blocks.
 	#
@@ -354,11 +354,15 @@ def _syntaxOf(i):
 
 syntaxOf = listing(_syntaxOf)
 
-def compile(source):
-	return Statement.List(_syntaxOf(parse(source)))
+def compile(source, *args, **kwd):
+	return Statement.List(_syntaxOf(parse \
+		(source, *args, **kwd)))
+
+def emulationOf(compile, *args, **kwd):
+	return compile(*args, **kwd).emulated
 
 
-def shortateCall(frame, source, locals = None):
+def shortateCall(frame, source, locals = None, compile = compile):
 	'''
 	frame task frameCall
 		attributeOf compiled
@@ -368,7 +372,7 @@ def shortateCall(frame, source, locals = None):
 		locals
 	'''
 
-	procedure = compile(source).emulated.compiled
+	procedure = emulationOf(compile, source).compiled
 
 	# def sendToOperator(line, multiline = False, backlog = False):
 	# 	print line
@@ -407,12 +411,50 @@ def shortate(name, value, **kwd):
 
 	'''
 
-	node = compile(value).emulated.compiled
+	node = emulationOf(compile, value).emulated.compiled
 
 	def shortateCall(frame, locals = None):
 		frame.task.frameCall(node, locals = locals)
 
 	return native
+
+def shortateCompiler(compile, shortize = None):
+	# Compile using shortate compiler
+	'''
+	import shortateCompile, shortateCompiler, shortize
+
+	# def transformShortate(transform, shortateCompile, code):
+	# 	return transform(shortateCompile, code))
+
+	# transformShortate = transformShortate \
+	# 	(lexicalTree_precedence, shortateCompile)
+
+	def transformShortate(code):
+		code = shortateCompile(code)
+		code = lexicalTree_precedence(code)
+
+		return shortateCompile(code)
+
+	@shortateCompiler(transformShortate, shortize = shortize)
+	def function():
+		"""
+		this or this
+
+		"""
+
+	'''
+
+	def set(function):
+		function._shortateCompile = compile
+		return function
+
+	if shortize:
+		def setize(function):
+			return shortize(set(function))
+
+		return setize
+
+	return set
 
 def shortize(function):
 	'''
@@ -429,7 +471,14 @@ def shortize(function):
 
 	'''
 
-	s = compile(dedent(docOf(function))).emulated
+	# Function object compilation resolution.
+	compile = getattr(function, '_shortateCompile', compile)
+
+	if callable(compile):
+		function = compile(dedent(docOf(function)))
+
+	s = function.emulated
+
 
 	def call(*args, **kwd):
 		# kwd.update(dict(zip(function.func_code.co_argnames, args)))
