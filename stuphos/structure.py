@@ -806,11 +806,15 @@ class EmulatedView(View, DeepView):
             return act(rqContext(request, name), \
                 args$slice(2), keywords$())
 
-        usage:
+        def rq$render(request, path):
             rq = rqContext$call(request, 'web')
             return rq(rq \
                 (accessitems, library, path) \
                  .render, request)
+
+            (view):
+                context(trigger)::
+                    return rq$render(request, path)
 
         '''
 
