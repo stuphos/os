@@ -580,7 +580,7 @@ class DeepView:
 # @runtime.available(runtime.System.Journal)
 # def debugging(log, self, etype, value, tb):
 
-def debugging500(self, request, task, etype, value, tb, traceback):
+def debugging500(self, noAccess, request, task, etype, value, tb, traceback):
     # import pdb; pdb.set_trace()
 
     # todo: generate html-ready (FO) tracebacks
@@ -591,6 +591,15 @@ def debugging500(self, request, task, etype, value, tb, traceback):
 
         traceback = value.traceback # if traceback is None else traceback # (before changing value)
         value = value.value
+
+
+    from django.template import Context, Template
+
+    if isinstance(value, NoAccessException):
+        return Template(noAccess or '''\
+        <h2>Error: {{ error }}</h2>
+
+        ''').render(Context(error = value))
 
 
     debugShowStringSources = (self.debug == 'show-string-sources')
@@ -621,7 +630,6 @@ def debugging500(self, request, task, etype, value, tb, traceback):
         tb = exceptionHeader(etype, value)
 
 
-    from django.template import Context
     from django.template.loader import get_template
     from django.template.exceptions import TemplateDoesNotExist
 
@@ -647,7 +655,8 @@ class EmulatedView(View, DeepView):
 
     def __init__(self, template, context: Trigger, environment = None,
                  source = None, debug = False, path = '',
-                 timeout = None, security = None, values = None):
+                 timeout = None, security = None, values = None,
+                 noAccess = None):
 
         self._template = template
         self.context = context
@@ -658,6 +667,7 @@ class EmulatedView(View, DeepView):
         self.timeout = timeout
         self.security = security
         self._values = values
+        self._noAccess = noAccess
 
     @property
     def path(self):
@@ -786,6 +796,23 @@ class EmulatedView(View, DeepView):
                 try: del self._request.session[self._sessionKey(n)]
                 except KeyError: pass
 
+        '''
+        def rqContext(request, name):
+            return security$context$new \
+                ('apikey:' + request.sessionGet \
+                    ('context$' + name))
+
+        def rqContext$call(request, name):
+            return act(rqContext(request, name), \
+                args$slice(2), keywords$())
+
+        usage:
+            rq = rqContext$call(request, 'web')
+            return rq(rq \
+                (accessitems, library, path) \
+                 .render, request)
+
+        '''
 
         # Access cache with this user as key.
         def _sessionKeyCurrentUser(self, name, default = None):
@@ -1142,8 +1169,8 @@ class EmulatedView(View, DeepView):
             return result
 
         # debugOn()
-        return dict(content = self._debugging(request, task, *result),
-                    status = 500)
+        return dict(status = 500, content = self._debugging
+            (self._noAccess, request, task, *result))
 
 
     def _activateContext(self, vm, q, response, protectedCont, context,
