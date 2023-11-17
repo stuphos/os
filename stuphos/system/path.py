@@ -68,6 +68,10 @@ except ImportError: # GAE
         def __init__(self, returncode, cmd, output = None):
             pass
 
+try: mapi
+except NameError:
+    mapi = map
+
 
 # This is important, because os.join implementation treats the 'rest of'
 # positional args differently as first (in terms of doing string operations
@@ -520,6 +524,10 @@ class path(str, SelectorBase):
 
     def open(self, mode = 'r'):
         return open(self, mode)
+
+        # try: return open(self, mode)
+        # except NotADirectoryError as e:
+        #     debugOn()
 
     @property
     def writable(self):
@@ -1380,6 +1388,32 @@ class path(str, SelectorBase):
             raise NotImplementedError('%s: %s' % (e, str(self)))
 
         return mapFileToString(str(self))
+
+    def restricted(self, *parts):
+        from os.path import sep
+        new = self
+
+        for p in parts:
+            for p in p.split(sep):
+                if p:
+                    while True:
+                        # print(p)
+
+                        if p == '..':
+                            new = new.folder
+                            if len(new) < len(self):
+                                new = self
+
+                        elif p != '.':
+                            if p[:1] != '/':
+                                new = new(p)
+                            else:
+                                p = p[1:]
+                                continue
+
+                        break
+
+        return new
 
 
 PathType = path
