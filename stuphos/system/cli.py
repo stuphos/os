@@ -20,6 +20,7 @@ def parseCmdln(argv = None):
     parser.add_option('-Z', '--full-world', action = 'store_true')
     parser.add_option('-n', '--no-world', action = 'store_true')
     parser.add_option('-W', '--cascade', '--load-world', action = 'store_true')
+    parser.add_option('--network')
 
     parser.add_option('-i', '--interactive', action = 'store_true')
     parser.add_option('-a', '--asynchronous', '--async', action = 'store_true')

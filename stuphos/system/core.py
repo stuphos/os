@@ -1,7 +1,7 @@
 # Game Core Replacement
 # (C) 2021 runphase.com .  All rights reserved.
 #
-from stuphos.etc.tools import isYesValue
+from stuphos.etc.tools import isYesValue, isNoValue
 
 from . import Heartbeat, Game
 from .db import Database
@@ -241,12 +241,21 @@ class Core(Heartbeat):
             # when to run test console code (not very useful in a server).
 
             from ph.interpreter.mental import runModuleScript
-            with open(options.file) as o:
-                runModuleScript(o.read(), programmer = options.admin_name,
+            if options.file == '--':
+                script = sys.stdin.read()
+            else:
+                with open(options.file) as o:
+                    script = o.read()
+
+            def boot_runModuleScript():
+                runModuleScript(script, programmer = options.admin_name,
                                 tracing = options.admin_trace,
                                 tokenize = options.parser_tokenize,
-                                args = args)
+                                args = args[1:])
 
+                # print('running')
+
+            self._boot_runModuleScript = boot_runModuleScript
 
         if options.admin_script:
             from stuphos.runtime.architecture.lookup import LookupObject
@@ -255,6 +264,8 @@ class Core(Heartbeat):
 
 
         # How to run 'quick' command mode:
+        # --network=false --no-init -dn --blocking=0
+        #
         # -dn --no-init \
         #   -S Management:embedded-webserver=false \
         #   -S Management:session-adapter=false \
@@ -277,9 +288,13 @@ class Core(Heartbeat):
                 from _thread import start_new_thread as nth
                 nth(self.run, ()) # Todo: ShutdownGame
             else:
+                # print('running')
+
                 try: self.run(optimisticTermination = self.optimisticTermination)
                 except KeyboardInterrupt:
                     print()
+
+                # print('done')
 
                 StuphMUD.ShutdownGame()
                 # system.core.unreachable = True
@@ -288,6 +303,11 @@ class Core(Heartbeat):
     # def blockingQueue(self):
     #     # Todo: if console is enabled, do not block!
     #     return self.cmdln['options'].blocking
+
+    def isNetworkEnabled(self):
+        # debugOn()
+        network = self.cmdln['options'].network
+        return network is None or not isNoValue(network)
 
     def resetWorldOption(self, options):
         if isYesValue(configuration.World.reset_on_boot):
@@ -299,10 +319,29 @@ class Core(Heartbeat):
         # Initialize MUD Package.
         import stuphos
 
-        stuphos.bootStart(options.config_file, options.set_option) # runtime.
+        stuphos.bootStart(options.config_file,
+            options.set_option, core = self) # runtime.
 
         # Complete MUD Boot Cycle.
         self.bootStartTime = getSystemTime()
+
+        if not self.cmdln['options'].fast_vm:
+            # Install timing driver.
+            import stuphos
+
+            try: self += self.Pulse(stuphos.getHeartbeat())
+            except AttributeError as e:
+                self.pulseInstallFailure('bootMudComplete', e)
+
+
+        def _bootMudStart_loadWorld():
+            return self.loadWorld(options, stuphlib, worldModule)
+
+        self._bootMudStart_loadWorld = _bootMudStart_loadWorld
+
+    # _bootMudStart_loadWorld = None
+
+    def loadWorld(self, options, stuphlib, worldModule):
         if not options.no_world:
             self.event.call(self.bootWorld, options, stuphlib, worldModule)
 
@@ -325,11 +364,7 @@ class Core(Heartbeat):
             self.fastVM = vm()
             nth(self.fastVM)
 
-        else:
-            # Install timing driver.
-            try: self += self.Pulse(stuphos.getHeartbeat())
-            except AttributeError as e:
-                print(f'bootMudComplete: {e}') # No need to print the traceback.
+        # else:
 
             # If components.system.core.Core construction fails
             #     to bootStart because the components.runtime.core
@@ -350,6 +385,29 @@ class Core(Heartbeat):
 
             #         But to do this means that the core logics need
             #         to recognize and apply state.
+
+
+    def pulseInstallFailure(self, where, e):
+        what = configuration.MUD.on_pulse_install_failure or 'shutdown'
+        print(f'{where}: {e} (resolving as {what})') # No need to print the traceback.
+
+        if what == 'debug':
+            debugOn()
+            self.stop()
+
+        elif what == 'debug-continue':
+            debugOn()
+
+        elif what == 'shutdown':
+            self.stop()
+
+        elif what == 'ignore':
+            return
+
+        else:
+            print(f'Not sure what to do with configuration[MUD:on_pulse_install_failure]: {what}')
+
+        print('Timing driver failed to install: engine may over-consume processing resource.')
 
 
     # def initConsole(self, console):

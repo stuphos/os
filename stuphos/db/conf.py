@@ -172,16 +172,19 @@ class DBCore(dict):
 	   	return self[name].djangoDatabaseConfig
 
 	@contextmanager
-	def hubThread(self, name):
-		hub = self.hub
-		try: prev = hub.threadConnection
-		except AttributeError: prev = None
+	def hubThread(self, name, allowNone = False):
+		if name is None and allowNone:
+			yield None
+		else:
+			hub = self.hub
+			try: prev = hub.threadConnection
+			except AttributeError: prev = None
 
-		conn = hub.threadConnection = self.getConnection(name)
+			conn = hub.threadConnection = self.getConnection(name)
 
-		try: yield conn
-		finally:
-			hub.threadConnection = prev
+			try: yield conn
+			finally:
+				hub.threadConnection = prev
 
 	@contextmanager
 	def hubProcess(self, name):

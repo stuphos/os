@@ -1,5 +1,7 @@
 # Initialize Management Services for Bootstrap.
-from stuphos.etc.tools import isYesValue
+from stuphos.etc.tools import isYesValue # , isNoValue
+from stuphos.system import core as stuphos_systemCore
+
 from .services import AutoServices
 
 class ManagementServices(AutoServices):
@@ -11,24 +13,29 @@ class ManagementServices(AutoServices):
         partner.bootPartnerAspect()
 
     def loadSessionAdapter(self, conf):
-        from phsite.network.adapter.sessions import SessionManager
-        try: SessionManager.get(create = True) # CreateFacility(SessionManager)
+        from phsite.network.adapter import sessions
+
+        try: sessions.SessionManager.get(create = True) # CreateFacility(SessionManager)
         except RuntimeError as e:
-            logOperation(f'[sessions] {e}')
+            if not isinstance(e, sessions.HostUnavailable) and \
+                not configurationTruth.Management.ignore_session_adapter_host_unavailable:
+                logOperation(f'[sessions] {e.__class__.__name__}: {e}')
+
 
     def loadEmbeddedWebserver(self, conf):
-        from stuphos.runtime.architecture.api import LookupObject
-        webServiceClass = LookupObject(self.section.get('webserver-object', 'stuphos.webserver.DjangoService'))
+        if stuphos_systemCore.instance.isNetworkEnabled():
+            from stuphos.runtime.architecture.api import LookupObject
+            webServiceClass = LookupObject(self.section.get('webserver-object', 'stuphos.webserver.DjangoService'))
 
-        try: webServiceClass.get(create = True) # CreateFacility(webServiceClass)
-        except OSError as e:
-            logOperation(f'[webserver] {e.__class__.__name__}: {e}')
+            try: webServiceClass.get(create = True) # CreateFacility(webServiceClass)
+            except OSError as e:
+                from stuphos import logException
+                tb = configurationTruth.Management.load_webserver_traceback
+                logException(traceback = tb, header = None if tb else
+                             f'[webserver] {e.__class__.__name__}: {e}')
 
-            from stuphos import logException
-            logException(traceback = True)
-
-        # todo: catch error: [Errno 112] Address already in use
-        # OSError: [Errno 98] Address already in use
+            # todo: catch error: [Errno 112] Address already in use
+            # OSError: [Errno 98] Address already in use
 
 
     # Some lesser features.
@@ -61,7 +68,10 @@ class ManagementServices(AutoServices):
         signal.signal(signal.SIGSEGV, bailOut)
 
     def postOn(self, cfg):
-        if not isYesValue(cfg.get('embedded-webserver')):
+        # debugOn()
+        if not isYesValue(cfg.get('embedded-webserver')) or \
+            not stuphos_systemCore.instance.isNetworkEnabled():
+
             from stuphos.webserver import djangoConfig
             djangoConfig()
 

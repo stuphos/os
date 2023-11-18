@@ -225,6 +225,63 @@ def extractOwnedContent(s, content, owner):
                 return (content, owner)
 
 
+def uploadAttributes(structure, ignore_package_meta = None):
+    '''
+    library:
+        # No particular structure besides package and library interpretation.
+        def module$language(allowed, node, language):
+            # assert nodeType(node) == 'Activity' # 'module'
+
+            def filterClass(allowed, item):
+                if item[0] in allowed:
+                    return item
+
+                return []
+
+            COMPILER_CLASSES = 'kernel/getAttrUnsafe' \
+                (node, '_core').COMPILER_CLASSES
+
+            COMPILER_CLASSES = mapping \
+                (map(filterClass.action(allowed),, \
+                     COMPILER_CLASSES.items()))
+
+            'kernel/getAttrUnsafe'(node, '_node') \
+                .compilerClass = 'kernel/lookup$' \
+                    (COMPILER_CLASSES[language])
+
+
+        def enable$package$language(point, package, allowedClasses):
+            attrs = 'kernel/callObject$'('stuphos.management.packaging.uploadAttributes', package)
+
+            for item in attrs.items():
+                scatter(item, 'name', 'ns')
+                path = point + name
+
+                try: language = ns['library.language']
+                except key$error: pass
+                else: module$language(allowedClasses, \
+                    library(path), language)
+
+            usage:
+                enable$language('org/path/')
+
+    '''
+
+    name = ignore_package_meta if isinstance(ignore_package_meta, str) else PACKAGE_META_NAME
+
+    # print(f'loading {name}', file = sys.stderr)
+
+    try: attributes = structure[name]
+    except KeyError as e:
+        # print(', '.join(structure))
+        raise e
+    else:
+        if not isinstance(attributes, str):
+            raise ValueError(f'Expected simple text for {name}, got {type(attributes)}')
+
+        return loadJsonString(attributes)
+
+
 ALT_TYPES = ('structures', 'interfaces', 'media')
 
 # Todo: ignore_package_meta is used as the package meta filename.
@@ -237,6 +294,7 @@ def uploadStructure(core, path, structure, set_programmers = False,
     if srcpath is None:
         srcpath = path
 
+
     reserved = ALT_TYPES + ((PACKAGE_META_NAME,) if ignore_package_meta is True
                             else (() if not ignore_package_meta else (ignore_package_meta,)))
 
@@ -244,20 +302,8 @@ def uploadStructure(core, path, structure, set_programmers = False,
     # print(f'loading {attributes}', file = sys.stderr)
 
     if attributes == 'load':
-        name = ignore_package_meta if isinstance(ignore_package_meta, str) else PACKAGE_META_NAME
-
-        # print(f'loading {name}', file = sys.stderr)
-
-        try: attributes = structure[name]
-        except KeyError as e:
-            # print(', '.join(structure))
-            raise e
-        else:
-            if not isinstance(attributes, str):
-                raise ValueError(f'Expected simple text for {name}, got {type(attributes)}')
-
-            attributes = loadJsonString(attributes)
-            # print(f'loaded {attributes}', file = sys.stderr)
+        attributes = uploadAttributes(structure, ignore_package_meta)
+        # print(f'loaded {attributes}', file = sys.stderr)
 
     elif not isinstance(attributes, dict):
         attributes = dict()
@@ -277,11 +323,15 @@ def uploadStructure(core, path, structure, set_programmers = False,
         #     print(f'result: {r}', file = sys.stderr)
         #     return r
 
+
     try: structs.extend(list(structure['structures'].items()))
     except KeyError: pass
 
     try: structs.extend(list(structure['interfaces'].items()))
-    except KeyError: pass
+    except (KeyError, AttributeError): pass
+    # except AttributeError:
+    #     # Because the interfaces item might be None...
+    #     debugOn()
 
     try: media.extend(list(structure['media'].items()))
     except KeyError: pass
@@ -292,15 +342,17 @@ def uploadStructure(core, path, structure, set_programmers = False,
                 if name not in reserved]
 
     def ensure(path):
-        path = path.split('/')
-        u = core.root.lookup
+        try: u = core.root.lookup
+        except AttributeError: pass
+        else:
+            path = path.split('/')
 
-        for i in range(1, len(path)+1):
-            folder = path[:i]
+            for i in range(1, len(path)+1):
+                folder = path[:i]
 
-            try: u(*folder)
-            except KeyError:
-                core.addFolder('/'.join(folder[:i-1]), folder[-1])
+                try: u(*folder)
+                except KeyError:
+                    core.addFolder('/'.join(folder[:i-1]), folder[-1])
 
     def isFolder(path, name):
         if folders:
@@ -386,6 +438,7 @@ def uploadStructure(core, path, structure, set_programmers = False,
                 else:
                     ensure(name)
 
+                # todo: yield these args
                 uploadStructure(core, head + name, s,
                                 set_programmers = set_programmers,
                                 ignore = ignore, folders = folders,
@@ -433,20 +486,24 @@ class fsPackageCore:
     def finished(self):
         pass
 
-class fsUnpackCore(fsPackageCore):
+
+class unpackCoreAttr:
     packageMetaName = PACKAGE_META_NAME
 
     def init(self):
         self.attributes = dict()
 
+    def setOwnerAttribute(self, path, name, owner):
+        self.attributes.setdefault \
+            (f'{path}/{name}', dict()) \
+                ['owner'] = owner
+
+
+class fsUnpackCore(unpackCoreAttr, fsPackageCore):
     def finished(self):
         # Overwrite.
         self.path(self.packageMetaName).write \
             (toJsonString(self.attributes))
-
-    def setOwnerAttribute(self, path, name, owner):
-        self.attributes.setdefault(f'{path}/{name}', dict()) \
-            ['owner'] = owner
 
 
     def getLocalPath(self, path, name, ensure = False):
@@ -511,6 +568,9 @@ def packageUnpackTo(structure, dest_dir, mount_point = None, fsUnpackClass = fsP
     uploadStructure(core, mount_point or '', structure, set_programmers = True)
     core.finished()
 
+    return core
+
+
 def packageStreamUnpackTo(input, output, mount_point = None):
     '''
     --admin-script=ph.interpreter.mental.library.extensions.packageStreamUnpackTo \
@@ -525,6 +585,125 @@ def packageStreamUnpackTo(input, output, mount_point = None):
 
     return packageUnpackTo(input, output, mount_point = mount_point,
                            fsUnpackClass = fsUnpackCore)
+
+
+class packageArchiveCore(unpackCoreAttr, fsPackageCore):
+    '''
+    code::
+        tar_packageArchive = action('kernel/callObject$seq', \
+            packageArchive.value) <- packageArchive:
+
+            - stuphos
+            - management
+            - packaging
+            - packageArchiveCore
+            - unpackTarGzip
+
+
+        def pathToTarArchive(path):
+            return tar_packageArchive \
+                (library(path).packageString) \
+                    .archive.getvalue()
+
+
+    interfaces/views::
+        # var package_wwwArchive = $.get('/page/views/www');
+
+        www(alias): views/package-archive/www
+
+        package-archive(view):
+            context(trigger)::
+                if is$deep$view(path):
+                    return request.user.securityContext \
+                        (..code.pathToArchive(path))
+
+    '''
+
+    @classmethod
+    def unpack(self, input, archive, **kwd):
+        return packageUnpackTo(input, archive,
+            fsUnpackClass = self, **kwd)
+
+
+    # @classmethod
+    # def unpackZip(self, input, *args, **kwd):
+    #     return self.unpack(input,
+    #         self._zipArchive
+    #             (*args, **kwd),
+    #             )
+
+    @classmethod
+    def unpackTarGzip(self, input, *args, **kwd):
+        # return self.unpack(input,
+        #     self._tarArchive
+        #         (*args, **kwd),
+        #         )
+
+        return self.unpack \
+            (input, self._tarArchive
+                ._bufferCreate())
+
+
+    class _archiveAdapter:
+        def __init__(self, *args, **kwd):
+            self.archive = self._open_archiveClass(*args, **kwd)
+
+        def _open_archiveClass(self, *args, **kwd):
+            return self._archiveClass(*args, **kwd)
+
+        def writeArchive(self, *args, **kwd):
+            return self.archive.writeArchive(*args, **kwd)
+        def writeInsertion(self, insertion, path, name, content):
+            return self.writeArchive(f'{path}/{insertion}{name}', content)
+
+    class _zipArchive(_archiveAdapter):
+        from zipfile import ZipFile as _archiveClass
+
+    class _tarArchive(_archiveAdapter):
+        from tarfile import TarFile as _archiveClass
+
+        # def _open_archiveClass(self, name=None, mode="r", fileobj=None, **kwargs):
+
+        @classmethod
+        def _bufferCreate(self):
+            from io import StringIO as bufferClass # BytesIO as bufferClass
+            return self(fileobj = bufferClass())
+
+        def getvalue(self):
+            return self.archive.fileobj.getvalue()
+
+
+    def __init__(self, archive):
+        self.archive = archive
+        self.init()
+
+
+    def addOwnedContent(self, insertion, path, name, content, programmer = None):
+        if programmer is not None:
+            self.setOwnerAttribute \
+                (path, name, programmer)
+
+        return self.archive.writeInsertion \
+            (insertion, path, name, content)
+
+
+    def addFolder(self, path, name):
+        # self.archive.writestr(f'{path}/{name}', '')
+        pass
+
+    def addModule(self, *args, **kwd):
+        return self.addOwnedContent('', *args, **kwd)
+    def addStructure(self, *args, **kwd):
+        return self.addOwnedContent('interfaces/', *args, **kwd)
+    def addMedia(self, *args, **kwd):
+        return self.addOwnedContent('media/', *args, **kwd)
+
+
+    def finished(self):
+        # Overwrite.
+        self.archive.writeArchive \
+            (self.packageMetaName,
+             toJsonString(self.attributes))
 
 
 class normalContinue(Exception):

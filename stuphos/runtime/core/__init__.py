@@ -187,7 +187,8 @@ def installHost():
         from stuphos.kernel import NotConfigured
         try: getHost(create = True).start()
         except NotConfigured:
-            logWarning('XMLRPC disabled.')
+            if not configurationTruth.XMLRPC.ignore_disabled:
+                logWarning('XMLRPC disabled.')
 
     except error as e:
         if e.args[0] not in disabling:
@@ -257,7 +258,7 @@ def installJournal():
         logException(traceback = True)
 
 
-def installServices(thisModule):
+def installServices(thisModule, core = None):
     # Install VM
     # Install system paths
     # Install environ config
@@ -313,7 +314,9 @@ def installServices(thisModule):
     # Pre-Management Set:
     installSystemComponents()
     installEnviron()
-    installHost()
+
+    # Done after application starts.
+    # installHost()
 
     # print(f'[vsz] post-host {psOpGameVsz()}') # +74Mb
 
@@ -352,7 +355,9 @@ def installServices(thisModule):
     else: initCommands()
 
 
-    try: from stuphos.management import initForCore
+    global management_initForCore
+
+    try: from stuphos.management import initForCore as management_initForCore
     except ImportError: pass
     else:
         # Hack -- fixup core plugins before managed components.
@@ -366,7 +371,33 @@ def installServices(thisModule):
 
             logException(traceback = True)
 
-        initForCore()
+        # Done in parallel.
+        # initForCore()
+
+
+    # pool = runtime[runtime.System.Task.Pool].pool
+
+    # debugOn()
+
+    from stuphos.kernel import ThreadPool
+    ThreadPool.get(create = True).pool \
+        .notask_dedicatedStart \
+            (boot_parallelStart, core)
+
+
+def boot_parallelStart(core):
+    installHost()
+
+    try: management_initForCore
+    except NameError: pass
+    else: management_initForCore()
+
+
+    try: loadWorld = core._bootMudStart_loadWorld
+    except AttributeError: pass
+    else:
+        del core._bootMudStart_loadWorld
+        loadWorld()
 
 
     # Todo: integrate this into management initForCore?
@@ -374,6 +405,16 @@ def installServices(thisModule):
     # a management component.  Use Management:webserver-object.
     # debugOn()
     installPlugins()
+
+
+    # XXX raises runtime error when debugging, but not when not debugging:
+
+    # debugOn()
+    try: runModuleScript = core._boot_runModuleScript
+    except AttributeError: pass
+    else:
+        del core._boot_runModuleScript
+        runModuleScript()
 
 
 def installWorld():
@@ -394,7 +435,7 @@ def installSystemConfig():
 
 
 # Event Bridge.
-def bootStart(configFile, setOptions):
+def bootStart(configFile, setOptions, core = None):
     # Note: this function must return the bridge, or
     # the rest of the extension is not installed.
 
@@ -426,7 +467,7 @@ def bootStart(configFile, setOptions):
 
     # Start reliance on VM path packages and rest of site.
     try:
-        installServices(thisModule)
+        installServices(thisModule, core = core)
         installWorld()
 
         from stuphos.management.reboot import StartRecovery

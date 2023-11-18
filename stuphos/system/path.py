@@ -1391,6 +1391,10 @@ class path(str, SelectorBase):
 
     def restricted(self, *parts):
         from os.path import sep
+
+        # XXX normpath doesn't interpret/eliminate '..'
+        # return self(normpath(sep.join(parts)))
+
         new = self
 
         for p in parts:

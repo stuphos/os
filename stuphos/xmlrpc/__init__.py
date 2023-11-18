@@ -2,11 +2,12 @@
 # todo: move this into ph.web/networking package?
 from . import config, host, client
 
-from .config import buildConfig
+from .config import buildConfig, NotConfigured
 from .host import HostRpc, installMarshaller
 from .client import ClientRpc
 
 from stuphos.runtime.facilities import Facility
+from stuphos.system import core as stuphos_systemCore
 from stuphos import log as mudlog
 
 class HostRpcManager(Facility, HostRpc):
@@ -14,6 +15,9 @@ class HostRpcManager(Facility, HostRpc):
 
     @classmethod
     def create(self):
+        if not stuphos_systemCore.instance.isNetworkEnabled():
+            raise NotConfigured # ("network disabled")
+
         config = buildConfig(None)
 
         mudlog('Creating XMLRPC Endpoint (port %s)' % config.port)

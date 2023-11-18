@@ -353,7 +353,8 @@ class Indent: # (Object):
     __call__ = format
 
     def paragraph(self, text):
-        return self.amount + ('\n' + self.amount).join(text.split('\n'))
+        tab = self.tab
+        return tab + ('\n' + self.tab).join(text.split('\n'))
 
     @classmethod
     def Paragraph(self, text, tab = None, **kwd):

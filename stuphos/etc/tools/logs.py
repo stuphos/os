@@ -65,6 +65,8 @@ def logException(etype = None, value = None, tb = None,
                  traceback = False, header = None,
                  indent = 'auto', core = None, agentSystem = False):
 
+    # debugOn()
+
     # Construct a traceback suitable for logging to syslog file.
     # Todo: serialize the exception data to another file.
     if etype is None and value is None and tb is None:

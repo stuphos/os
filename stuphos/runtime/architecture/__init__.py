@@ -313,11 +313,11 @@ class baseInstance(writable):
         return self._setAttribute(name, object)
 
 
-class extension:
+class extension: # (image):
     def __init__(self, object):
         self._object = object
 
-wrapper = extension
+wrapper = extension # = image
 
 class weakExtension(extension):
     def __init__(self, object = None, weakref = None):
@@ -701,10 +701,41 @@ class Translucent(extensionObject):
 _transparent = Transparent
 _translucent = Translucent
 
+
 class ExceptionType(Translucent):
+    '''
+    def exceptionClass(name, code):
+        return act('kernel/callObject$', \
+            ['stuphos.runtime.architecture.ExceptionType', \
+             run$python(code, valueName = name)] + args$(), \
+             keywords$())
+
+        usage:
+            return exceptionClass('exceptionClass', code) <- code:
+                class exceptionClass(Exception):
+                    pass
+
+    '''
+
     # @classmethod
-    def _fromMessage(self, message):
-        return self._object(message)
+    def _fromMessage(self, message, *args, **kwd):
+        return self._object(message, *args, **kwd)
+
+    def _checkActionCall(self, *args, **kwd):
+        return self._checkAction \
+            (*args, **kwd) \
+                ()
+
+    def _checkAction(self, etype, exc, **kwd):
+        def exceptionCheck():
+            yield issubclass(etype, self._object)
+            yield self
+            yield exc
+
+            # yield exceptionCheckHandle
+
+        return exceptionCheck
+
 
 class baseExceptionValue(Translucent):
     _type = None

@@ -48,6 +48,7 @@ class Heartbeat:
 
     def run(self, optimisticTermination = False):
         # Game-loop.
+        # time (echo|./mc -dn --network=false --no-init -f --)
         try:
             self.start()
             self.perform_start()
@@ -78,6 +79,7 @@ class Heartbeat:
     def is_running(self):
         return getattr(self, '_running_state', False)
     def set_running(self, state = True):
+        # debugOn()
         previous_state = self.is_running()
         state = bool(state)
         setattr(self, '_running_state', state)
@@ -92,8 +94,15 @@ class Heartbeat:
     def stop(self):
         self.set_running(False)
 
+    # Just never exits...
+    _forceAlive = True
+
     def alive(self):
         if bool(self.tasks):
+            # XXX -f doesn't put osCommand in vm.tasks before this happens...
+            if getattr(self, '_forceAlive', False):
+                return True
+
             from world import heartbeat as vm
             for x in vm.tasks:
                 return True
@@ -134,6 +143,11 @@ class Game(Heartbeat.Task):
         self.call(event)
         return self
 
+    class _exitClass(SystemExit):
+        pass
+
+    _exitClasses = (_exitClass,)
+
     def perform(self, engine):
         timeout = self.timeout
 
@@ -150,9 +164,13 @@ class Game(Heartbeat.Task):
                     continue
 
             try: event(*params, **kwd)
+            except self._exitClasses as e:
+                raise e
+
             except SystemExit:
                 break
-            except:
+
+            except: # Exception as e:
                 # Soft Fail.
                 self.traceback.print_exc()
 

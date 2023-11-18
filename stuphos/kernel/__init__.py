@@ -67,8 +67,7 @@ else:
 	from ph.emulation.operation.application import Generator
 	from ph.emulation.operation.application import FastLocals
 
-
-	try: from ph.emulation.machine.parallel import pool
+	try: from ph.emulation.machine.parallel import pool, ThreadPool
 	except ImportError: pass
 
 

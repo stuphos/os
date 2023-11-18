@@ -8,7 +8,7 @@ from stuphos.kernel import Machine as VM
 
 def docClasses():
 	return (getattr(configuration, \
-		configuration.MUD.document_class, \
+		configuration.MUD.document_class or '', \
 		None).system_classes or '').split('\n')
 
 def classAssignment(cls):

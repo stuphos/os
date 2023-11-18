@@ -44,8 +44,21 @@ def loadConfigFromString(string, defaults = None, name = None):
     config.read_string(string, source = name)
     return Configuration(config, name)
 
+
+NoOptionOrSectionError = (NoSectionError, NoOptionError)
+
 class Configuration:
+    NoSectionError = NoSectionError
+    NoOptionError = NoOptionError
+
+    NoOptionOrSectionError = NoOptionOrSectionError
+
     class Section:
+        NoSectionError = NoSectionError
+        NoOptionError = NoOptionError
+
+        NoOptionOrSectionError = NoOptionOrSectionError
+
         def __init__(self, config, section = None, **vars):
             if section is not None and type(section) is not str:
                 raise TypeError(type(section).__name__)
@@ -78,6 +91,11 @@ class Configuration:
 
     class _addressor:
         # todo: rewrite this with attributable.
+        NoSectionError = NoSectionError
+        NoOptionError = NoOptionError
+
+        NoOptionOrSectionError = NoOptionOrSectionError
+
         class _section:
             def __init__(self, addressor, name):
                 self._addressor = addressor
@@ -153,7 +171,10 @@ class Configuration:
     def loadSetOption(self, options):
         for (section, name, value) in options:
             if section and name and value:
-                self.getSection(section).setOption(name, value)
+                try: self.getSection(section).setOption(name, value)
+                except self.NoOptionOrSectionError as e:
+                    print(f'[management.config] {e.__class__.__name__}: {e} ({self.filename})')
+
 
     def parseSetOptionList(self, options):
         return map(self.parseSetOption, options)

@@ -580,7 +580,7 @@ class DeepView:
 # @runtime.available(runtime.System.Journal)
 # def debugging(log, self, etype, value, tb):
 
-def debugging500(self, noAccess, request, task, etype, value, tb, traceback):
+def debugging500(self, noAccess, request, task, etype, value, tb, traceback, **kwd):
     # import pdb; pdb.set_trace()
 
     # todo: generate html-ready (FO) tracebacks
@@ -638,11 +638,19 @@ def debugging500(self, noAccess, request, task, etype, value, tb, traceback):
         return tb + '\n' + vtb
 
     return t.render(dict(traceback = tb, vtraceback = vtb,
-                         task = None if task is None else task._task))
+                         task = None if task is None else task._task,
+                         args = kwd))
 
     # return 'Heres where we return a 500 template with traceback!'
 
 class EmulatedView(View, DeepView):
+    '''
+    (view):
+        noAccess(extends): olc/noaccess.html
+        template(extends): menu.html
+
+        '''
+
     __public_members__ = ['context', 'environment', 'source', 'debug', 'path', 'timeout', 'security']
     _debugging = debugging500
 
@@ -703,7 +711,9 @@ class EmulatedView(View, DeepView):
         def GET(self):
             # debugOn()
             if getattr(self, '_stuphos_resetGET', False):
-                del self.GET, self._stuphos_resetGET
+                # Why would you want this?
+                # del self.__GET # , self._stuphos_resetGET
+                del self.__GET, self._stuphos_resetGET
 
             try: return self.__GET
             except AttributeError:
@@ -738,6 +748,10 @@ class EmulatedView(View, DeepView):
         #         g = self.__FILES = vmNewMapping(*list(self._request.FILES.items()))
         #         return g
 
+
+        @property
+        def host(self):
+            return self._request.META['HTTP_HOST']
 
         @property
         def userAgent(self):
@@ -955,7 +969,7 @@ class EmulatedView(View, DeepView):
                 return securityContext(task.findProgrammer(), user = self._user)
 
             def checkAccessError(self, op, resource):
-                from stuphos.kernel import Programmer, vmCurrentTask
+                from stuphos.kernel import Programmer # , vmCurrentTask
                 principal = self._primaryIdentity.lower()
 
                 if isinstance(resource, str):
@@ -968,6 +982,10 @@ class EmulatedView(View, DeepView):
                     return True
 
                 raise NoAccessException(Programmer(principal), resource, op)
+
+            def responseCallable(self, value):
+                self.checkAccessError('write', 'system:network:response:callable')
+                return responseCallable(value)
 
 
     def _securityCheck(self, core, user, progr, subresource):
@@ -1001,6 +1019,7 @@ class EmulatedView(View, DeepView):
             if self.context:
                 return checkAccess(self.context._path + self._path) # + subresource
 
+            # Todo: provide this level security for all other cases? :security:
             return True
 
         # if isinstance(sec, dict):
@@ -1010,12 +1029,8 @@ class EmulatedView(View, DeepView):
 
         raise NotImplementedError(f'view.security = {sec}')
 
-    def _render(self, request = None, response = None, account = None,
-                path = None, requestAdapter = None, programmer = None,
-                query = None, core = None, context = None, initiatingUser = None):
-
+    def _securityArgs(self, request, initiatingUser, programmer):
         from phsite.network.adapter.commands import CoreRequest
-        from world import heartbeat as vm # XXX Todo: runtime.System.Engine
 
         # Use initiatingUser if set, otherwise use programmer user or request.user
         # if that's not set.
@@ -1060,6 +1075,17 @@ class EmulatedView(View, DeepView):
         # debugOn()
         securityUser = None if request is None else request.user
 
+        return (user, progr, securityUser)
+
+
+    def _render(self, request = None, response = None, account = None,
+                path = None, requestAdapter = None, programmer = None,
+                query = None, core = None, context = None, initiatingUser = None):
+
+        (user, progr, securityUser) = self._securityArgs \
+            (request, initiatingUser, programmer)
+
+
         # Raises NoAccessException.  But also returns False if the check failed.
         try: passCheck = self._securityCheck(core, securityUser, progr, path)
         except NoAccessException as e:
@@ -1073,11 +1099,31 @@ class EmulatedView(View, DeepView):
             # progr = None if progr is None else progr.lower()
 
         if securityError is not None:
-            return dict(content = self._debugging \
-                        (request, None, securityError.__class__,
-                         securityError, None, None),
-                        status = 500)
+            task = None
+            result = (securityError.__class__, securityError, None, None)
 
+        else:
+            (success, result, task) = self._activateQuery \
+                (context, requestAdapter, request, path,
+                 query, response, progr, user, account)
+
+            if success:
+                # debugOn()
+                return result # do not consider thread-compartment for result
+
+
+            # path = self.context._path if self.context else ''
+
+        # debugOn()
+        return dict(status = 500, content = self._debugging
+            (self._noAccess, request, task, *result,
+             view = self._path, path = path))
+
+
+    def _activateQuery(self, context, requestAdapter, request, path,
+                       query, response, progr, user, account):
+
+        from world import heartbeat as vm # XXX Todo: runtime.System.Engine
 
         if self.debug in ['debug', 'trace', 'stack']:
             audit = str.__str__(self.debug)
@@ -1167,14 +1213,12 @@ class EmulatedView(View, DeepView):
              outputLocals)
 
 
-        (success, result) = q.get() # *
-        if success:
-            # debugOn()
-            return result
+        # (success, result) = q.get() # *
 
-        # debugOn()
-        return dict(status = 500, content = self._debugging
-            (self._noAccess, request, task, *result))
+        # return (success, result, task)
+
+
+        return q.get() + (task,)
 
 
     def _activateContext(self, vm, q, response, protectedCont, context,
@@ -1436,6 +1480,10 @@ class AliasedView(View, DeepView):
     __public_members__ = ['path']
 
     def __init__(self, path):
+        if not path:
+            self._query = []
+            path = []
+
         if isinstance(path, str):
             (_, qs) = splitquery(path)
             self._query = parse_qs(qs).items()
@@ -1689,7 +1737,8 @@ class UrlConfiguration(writeprotected):
             if not isinstance(conf, dict):
                 raise TypeError(type(conf).__name__)
             if len(conf) != 1:
-                raise ValueError(f'{len(conf)}') # : {conf.keys()}')
+                raise ValueError(f'{len(conf)}: {conf.keys()}')
+                # raise ValueError(f'{len(conf)}') # : {conf.keys()}')
 
             (pattern, handler) = next(iter(conf.items()))
             self._patterns.append(UrlPattern(pattern, handler))
@@ -1857,6 +1906,7 @@ class Factory(Submapping):
                 context = value.pop('context')
                 timeout = value.pop('timeout', None) # int(configuration.Management.default_view_timeout))
                 security = value.pop('security', None)
+                noAccess = None # value.pop('noAccess', None)
 
                 debug = value.pop('debug', False)
 
@@ -1879,15 +1929,21 @@ class Factory(Submapping):
 
                                     path = name, # XXX use document loader path, since this is relative
                                     timeout = timeout,
-                                    security = security)
+                                    security = security,
+                                    noAccess = noAccess)
 
             else:
                 content_type = value.get('content-type')
 
         return StaticView(content, content_type = content_type)
 
+    endpoint = view
+
     def alias(self, name, value, **kwd):
         return AliasedView(value)
+
+    def extends(self, name, value, **kwd):
+        return '{%% extends %r %%}' % value
 
 
     def python(self, name, value, **kwd):

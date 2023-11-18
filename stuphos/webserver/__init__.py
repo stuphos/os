@@ -30,6 +30,7 @@ from stuphos.runtime.architecture.api import writeprotected
 from stuphos import getConfig
 from stuphos.etc import isYesValue
 
+
 # Done dynamically:
 # from stuphos.structure import RequestAdapter
 

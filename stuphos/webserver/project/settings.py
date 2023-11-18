@@ -108,8 +108,15 @@ ADMIN_MEDIA_PREFIX = '/admin/media/'
 SECRET_KEY_PATH = djangoServiceConf.get('secret-key-path', 'etc/django.secret.key')
 try: SECRET_KEY = open(SECRET_KEY_PATH).read().strip()
 except IOError as e:
-    print('ERROR: Using default django site secret key.', e)
-    SECRET_KEY = 'lla4r9dp9g8x)q4kuod-biqz0+=&-7&p(&p5$(1a9igwcr%+0%'
+    unsafe_site_key = configuration.DjangoService.unsafe_site_key
+
+    if unsafe_site_key == 'unavailable':
+        print('ERROR: Not installing django site secret key.', e)
+    else:
+        if not isYesValue(unsafe_site_key):
+            print('ERROR: Using default django site secret key.', e)
+
+        SECRET_KEY = 'lla4r9dp9g8x)q4kuod-biqz0+=&-7&p(&p5$(1a9igwcr%+0%'
 
 
 CMS_PROJECT_NAME = 'cms' # Name of directory in packages/web/

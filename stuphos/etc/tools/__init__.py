@@ -68,6 +68,8 @@ from .cmdln import *
 registerBuiltin(log, 'logOperation')
 
 registerBuiltin(nling, 'nling')
+
+# XXX This gets set here, but if the oplib is present, gets set to that version _somewhere_ else
 registerBuiltin(indent, 'indent')
 
 
@@ -121,7 +123,7 @@ def _applyIndexAttributes(o):
 class builtin(object):
     import builtins as builtinModule
 
-    def __call__(self, *args, **kwd):
+    def set(self, override, *args, **kwd):
         ns = self.builtinModule.__dict__
 
         for o in args:
@@ -129,13 +131,20 @@ class builtin(object):
             except AttributeError: pass
             else:
                 _applyIndexAttributes(o)
-                ns[name] = o
+                if override or name not in ns:
+                    ns[name] = o
 
         for (name, value) in kwd.items():
             _applyIndexAttributes(value)
-            ns[name] = value # todo: AccessParts (deep) set, using synthetics...
+            # if name == 'indent':
+            #     debugOn()
+            if override or name not in ns:
+                ns[name] = value # todo: AccessParts (deep) set, using synthetics...
 
         return self.builtinModule
+
+    def __call__(self, *args, **kwd):
+        return self.set(True, *args, **kwd)
 
     As = staticmethod(As.Builtin)
     # Overlay = Overlay
