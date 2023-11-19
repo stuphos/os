@@ -1135,6 +1135,12 @@ class NoAccessException(Exception):
     # def pathNotFound(self):
     #     raise PathNotFound(self.resource)
 
+    def node(self, *args):
+        return AliasedView \
+            ((self.resource if isinstance
+                (self.resource, (list, tuple))
+                else (self.resource,)) + args)
+
 
 # Todo: because PathNotFound is part of ph, move this into that package.
 def pathNotFound(noAccess):
