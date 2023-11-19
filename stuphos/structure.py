@@ -1940,7 +1940,15 @@ class Factory(Submapping):
     endpoint = view
 
     def alias(self, name, value, **kwd):
+        '''
+        node(alias): www/public/encapsule/node
+        encapsule(encapsule$node):
+            - stuphos/pub/exe-script/view
+
+        '''
+
         return AliasedView(value)
+    node = alias
 
     def extends(self, name, value, **kwd):
         return '{%% extends %r %%}' % value
