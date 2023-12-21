@@ -13,6 +13,7 @@ def parseCmdln(argv = None):
     parser.add_option('-p', '--port', type = int)
     parser.add_option('-v', '--verbose', action = 'count', default = 0)
     parser.add_option('-d', '--headless', '--no-console', action = 'store_true')
+    parser.add_option('-l', '--headed', '--console', action = 'store_true')
 
     parser.add_option('-w', '--world-dir')
     parser.add_option('-z', '--zone-index', '--index')
@@ -105,7 +106,8 @@ class ConsoleBusiness:
             pass
 
     def perform(self, engine):
-        self.engine.event += self.handleConsoleInput
+        if not engine.headed or not engine.alive():
+            self.engine.event += self.handleConsoleInput
 
     # Game I/O Events.
     PROMPT = ' --+====> ' # ' +> '
@@ -143,7 +145,7 @@ class ConsoleBusiness:
             return
 
         # Full stop on errors.
-        if self.engine.headless:
+        if self.engine.headless and not engine.headed:
             self.engine -= self
         else:
             @self.engine.event.call

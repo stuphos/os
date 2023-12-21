@@ -44,6 +44,19 @@ def loadConfigFromString(string, defaults = None, name = None):
     config.read_string(string, source = name)
     return Configuration(config, name)
 
+def loadConfigSectionFromString(ini, section = '---', *args, **kwd):
+    return loadConfigFromString \
+        (f'[{section}]\n{ini}',
+         *args, **kwd).getSection \
+            (section)
+
+def configValueValue(n, v):
+    return f'{n} = {v}'
+def configStringFromValue(**kwd):
+    return '\n'.join(configValueValue(n, v if isinstance(v, str)
+                     else indent("\n".join(v))) for (n, v) in
+                     kwd.items())
+
 
 NoOptionOrSectionError = (NoSectionError, NoOptionError)
 
@@ -66,6 +79,12 @@ class Configuration:
             self.config = config
             self.section = section or DEFAULTSECT
             self.vars = vars
+
+        def ensure(self):
+            if not self.config._config.has_section(self.section):
+                self.config._config.add_section(self.section)
+
+            return self
 
         def get(self, name, default = None):
             try: return self.config._config.get(self.section, name, vars = self.vars)
@@ -171,9 +190,16 @@ class Configuration:
     def loadSetOption(self, options):
         for (section, name, value) in options:
             if section and name and value:
-                try: self.getSection(section).setOption(name, value)
-                except self.NoOptionOrSectionError as e:
-                    print(f'[management.config] {e.__class__.__name__}: {e} ({self.filename})')
+                # debugOn()
+                self.getSection(section).ensure().setOption(name, value)
+
+                # try: e = self.getSection(section)
+                # except self.NoOptionOrSectionError as e:
+                #     # print(f'[management.config] {e.__class__.__name__}: {e} ({self.filename})  Creating')
+                #     self._config.add_section(section)
+                #     e = self.getSection(section)
+
+                # e.setOption(name, value)
 
 
     def parseSetOptionList(self, options):
@@ -184,9 +210,23 @@ class Configuration:
         except ValueError as e:
             raise ValueError(opt) from e
 
-        try: (section, name) = name.split(':', maxsplit = 1)
-        except ValueError as e:
-            raise ValueError(name) from e
+        # debugOn()
+        s = 0
+        while True:
+            i = name.find(':', s)
+            if i <= 0:
+                raise ValueError('No colon (or no section): ' + name)
+
+            if name[i-1] != '\\':
+                section = name[:i].replace('\\', '')
+                name = name[i+1:]
+                break
+
+            s = i + 1
+
+        # try: (section, name) = name.split(':', maxsplit = 1)
+        # except ValueError as e:
+        #     raise ValueError(name) from e
 
         yield section
         yield name

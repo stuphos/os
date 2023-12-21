@@ -1315,10 +1315,35 @@ class Submapping(StructuredEncoding.ItemClass):
         if getattr(typeImpl, 'isAsync', False):
             return typeImpl
 
+    def isMappedName(self, name):
+        bases = [Submapping]
+
+        while bases:
+            base = bases[0]
+            del bases[0]
+
+            member = getattr(base, name, None)
+            if member is not None:
+                # print(member)
+                return False
+
+            for base in getattr(base, '__bases__', []):
+                if base not in bases:
+                    bases.append(base)
+
+        return True
+
     def getTypeImpl(self, name):
         self.resolveAliases()
+
+        if not name: # XXX if isstr
+            return
+
         if name.startswith('_'):
             raise NameError(f'Type implementation name must not start with underscore: {name}')
+
+        if not self.isMappedName(name):
+            raise NameError(f'Type implementation name is not mapped: {name}')
 
         return getattr(self, name, None) # i guess
 

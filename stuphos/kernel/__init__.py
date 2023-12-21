@@ -70,6 +70,11 @@ else:
 	try: from ph.emulation.machine.parallel import pool, ThreadPool
 	except ImportError: pass
 
+	try: from ph.emulation.machine.parallel \
+		import MultithreadingCore as machine_multiCompartment
+
+	except ImportError: pass
+
 
 from ph.emulation.security import RelationNetwork
 

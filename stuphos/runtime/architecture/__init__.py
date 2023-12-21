@@ -282,6 +282,8 @@ class writeprotected(writable, representable):
 
         # print(f'{name} in {pub}')
 
+        # !!! Unsafe in that it doesn't ever allow a safe implementation of write.
+
         # So in otherwords, to repeat, I'm allowing private sets HERE, but only
         # because store_member denies them.
         if name.startswith('_') or name in getattr(self, '__public_members__', []):

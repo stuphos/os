@@ -4,7 +4,7 @@
 # (For interactive access)
 # That, is symbolic file-system controller interface.
 from os.path import join as joinpath0, basename, dirname, expanduser, expandvars
-from os.path import exists as fileExists, splitext, splitdrive, isabs
+from os.path import exists as fileExists, splitext, splitdrive, isabs, normpath
 from os import getcwd, listdir, sep as SEP, sep as ROOT, environ
 from os import unlink, stat
 
@@ -23,6 +23,7 @@ except ImportError as e: loadYaml = e
 
 from contextlib import contextmanager
 from tempfile import mkstemp, mkdtemp
+from errno import EEXIST
 
 # from op.runtime import Object, Attributable, getObjectName, GenericContext
 # from op.runtime.core import notImplemented
@@ -45,11 +46,19 @@ try: from os import mkdir, chdir, makedirs
 except ImportError: # GAE
     mkdir = chdir = makedirs = notImplemented
 
-try: from os import mknod, S_IFIFO
-except ImportError: # GAE
-    mknod = notImplemented
-    S_IFIFO = 0
+try: from os import mkfifo
+except ImportError:
+    mkfifo = notImplemented
 
+# try: from os import mknod, S_IFIFO
+# except ImportError: # GAE
+#     try: from os import mkfifo
+#     except ImportError:
+#         mkfifo = mknod = notImplemented
+#         S_IFIFO = 0
+# else:
+#     def mkfifo(path, *args, **kwd):
+#         return mknod(path, mode = S_IFIFO, *args, **kwd)
 
 try:
     from os import system as systemCommand
@@ -67,6 +76,7 @@ except ImportError: # GAE
     class CalledProcessError(NotImplementedError):
         def __init__(self, returncode, cmd, output = None):
             pass
+
 
 try: mapi
 except NameError:
@@ -213,15 +223,27 @@ class CalledProcessError(CalledProcessError0):
         self.stderrOutput = stderrput
         self.stdOutput = stdoutput
 
+
+def _popenObject(*args, **kwd):
+    return subprocess.Popen \
+        (stdout = subprocess.PIPE,
+         stderr = subprocess.PIPE,
+         *args, **kwd)
+
+def _popenComm(*args, **kwd):
+    p = _popenObject(*args, **kwd)
+    return (p,) + p.communicate()
+_popenStream = _popenComm
+
+def _popenOutcome(*args, **kwd):
+    (p, *args) = _popenComm(*args, **kwd)
+    return (p.poll(),) + tuple(args)
+
+
 def CallSubprocessForOutErr(*args, **kwd):
     'Like check_output, but buffers stderr in the exception.'
-
-    p = subprocess.Popen(stdout = subprocess.PIPE,
-                         stderr = subprocess.PIPE,
-                         *args, **kwd)
-
-    (stdout, stderr) = p.communicate()
-    retCode = p.poll()
+ 
+    (retCode, stdout, stderr) = _popenOutcome(*args, **kwd)
 
     if retCode:
         # This means the process/function call is actually 'converted'
@@ -284,6 +306,17 @@ def pipeString(string, **kwd):
     return pipe(*ConvertPathList2PlatformForStrings \
                 (splitShellTokens(string), options),
                 **kwd)
+
+
+def _convert_popenComm(*paths, **kwd):
+    (options, kwd) = _parseConvertPathOptions(**kwd)
+    return _popenComm \
+        (ConvertPathList2PlatformForStrings
+            (paths, options), **kwd)
+
+def _convert_popenCommObject(*paths, **kwd):
+    return _convert_popenComm(*paths, **kwd)[0]
+
 
 def spawn(*paths, **kwd):
     # XXX Note:
@@ -463,8 +496,15 @@ class path(str, SelectorBase):
     def unlink(self):
         return unlink(self)
 
-    def mkpipe(self, mode = 0o600):
-        mknod(self, mode|S_IFIFO)
+    def mkpipe(self, mode = 0o600, *args, **kwd):
+        silent = kwd.pop('silent', False)
+
+        try: mkfifo(self, mode = mode, *args, **kwd)
+        except FileExistsError as e:
+            if not silent or e.errno != EEXIST:
+                raise e
+
+        # mknod(self, mode|S_IFIFO)
         return self
 
     isdir = property(isdir)
@@ -524,10 +564,6 @@ class path(str, SelectorBase):
 
     def open(self, mode = 'r'):
         return open(self, mode)
-
-        # try: return open(self, mode)
-        # except NotADirectoryError as e:
-        #     debugOn()
 
     @property
     def writable(self):
@@ -994,6 +1030,11 @@ class path(str, SelectorBase):
         # Shouldn't these things be a function at global level?
         return pipeString('%r %s' % (self, cmdln), **kwd)
 
+
+    popenComm = _convert_popenComm
+    popenCommObject = _convert_popenCommObject
+
+
     spawn = spawn
     def spawnString(self, cmdln, **kwd):
         cmdln = splitShellTokens(cmdln)
@@ -1391,10 +1432,6 @@ class path(str, SelectorBase):
 
     def restricted(self, *parts):
         from os.path import sep
-
-        # XXX normpath doesn't interpret/eliminate '..'
-        # return self(normpath(sep.join(parts)))
-
         new = self
 
         for p in parts:
@@ -1499,6 +1536,16 @@ class Scriptable: # (Object):
 
         def __new__(self, sc):
             return sc.parts
+
+        # from op.runtime.virtual.objects import isInstance
+        # from op.runtime.layer.strings import TokenizeInterpolatedExpression as tokenize, Expression
+        # from op.runtime.functional.sequencing import filtering, mapping
+
+        # def __new__(self, sc, allSC = filtering(isInstance(ScriptableVariable)),
+        #                       tokenize = mapping(lambda v, allExprs = filtering(isInstance(Expression)),
+        #                                                    tokenize = tokenize:
+        #                                                    allExprs(tokenize(v.format)))):
+        #     return tokenize(allSC(sc.parts))
 
     variables = property(parseVariables)
 

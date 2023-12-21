@@ -497,6 +497,70 @@ class Trigger(writeprotected, Object):
         return self._activateAsync(self._expression, task)
 
 
+    class _triggerContainer(writeprotected):
+        def __init__(self, trigger):
+            self._trigger = trigger
+
+    @classmethod
+    def isTriggerContainer(self, trigger):
+        return isinstance(trigger, self._triggerContainer)
+
+    def getContainer(self, *args, **kwd):
+        '''
+        interfaces/views::
+            deploy(view):
+                context(trigger)::
+                    if is$deep$view(path):
+                        mem = trigger.getContainer(..code.cache \
+                            .get$triggerContainer, path$, path)
+
+                        mem.update(request.GET)
+                        mem.update(request.POST)
+
+                usage:
+                    deploy/?modulepath=&command=com/main&userId=
+
+            jvm(view):
+                context(trigger)::
+                    if is$deep$view(path):
+                        try: key = request.headers['X-API-Key']
+                        except key$error: access = request.user.securityContext
+                        else: access = security$context$view(key)
+
+                        return access(..code.jvm.source, action \
+                            (trigger.getContainer, ..code.cache \
+                                .get$triggerContainer, path$, \
+                                ['deploy'] + path.slice(1))
+
+        code:
+            jvm::
+                def source(triggerContainer, view_path, path):
+                    mem = triggerContainer(view_path, path)
+
+                    act(jvmbin.pipe, ['-path', mem['modulepath'], \
+                        mem['command']], env = mem) # todo: interpret
+
+            cache::
+                def get$triggerContainer(trigger, view_path, path):
+                    instance$:
+                        - stuphos
+                        - structure
+                        - Trigger
+                        - isTriggerContainer
+
+                    if 'kernel/callObject$seq'(.value, trigger):
+                        return get('tc-%s-%s' % [view_path, path])
+        '''
+
+        (method, *args) = args
+        # (view_path, path, *args) = args
+
+        raise vmCurrentTask().addFrameCall \
+            (resolve_procedure(method),
+             arguments = [self._triggerContainer(self)] \
+                + list(args), keywords = kwd).outer
+
+
 Evaluation = Trigger
 
 class Inline(Trigger):
@@ -599,7 +663,7 @@ def debugging500(self, noAccess, request, task, etype, value, tb, traceback, **k
         return Template(noAccess or '''\
         <h2>Error: {{ error }}</h2>
 
-        ''').render(Context(error = value))
+        ''').render(Context(dict(error = value)))
 
 
     debugShowStringSources = (self.debug == 'show-string-sources')
@@ -1206,7 +1270,8 @@ class EmulatedView(View, DeepView):
 
         task = (isYesValue(configuration.AgentSystem.www_superior_enabled) and \
                 self._activateContextSuperior or self._activateContext) \
-            (vm, q, response, protectedCont, context,
+            (vm, q, request, response,
+             protectedCont, context,
              path, locals, progr,
              user, initializeTask,
              audit, report, account,
@@ -1221,7 +1286,8 @@ class EmulatedView(View, DeepView):
         return q.get() + (task,)
 
 
-    def _activateContext(self, vm, q, response, protectedCont, context,
+    def _activateContext(self, vm, q, request, response,
+                         protectedCont, context,
                          path, locals, progr,
                          user, initializeTask,
                          audit, report, account,
@@ -1377,13 +1443,75 @@ class EmulatedView(View, DeepView):
         return task
 
     def _activateContextSuperior \
-        (self, vm, q, response, protectedCont, context,
+        (self, vm, q, request, response,
+         protectedCont, context,
          path, locals, progr,
          user, initializeTask,
          audit, report, account,
          outputLocals):
 
-        page: EmulatedView
+        '''
+        interfaces/www/superior::
+            page(view):
+                context(trigger)::
+                    ns = locals().copy()
+                    del$('view$client', ns)
+
+                    return view$client.activateContextInferior \
+                        ('view(%r)' % path, ns).result()
+
+
+        # -SAgentSystem:page-superior=www/superiorCode/page
+        www/superiorCode::
+            def page():
+                o = locals()
+                o['context'] = context
+                ns = o.copy()
+
+                try:
+                    del$('view$client', ns)
+                    renderView = view$client.activateContextInferior
+
+                except name$error e:
+                    context['error'] = e
+
+                else:
+                    try: result = renderView('view(%r)' % [path], ns).result()
+                    except exception e:
+                        raise(e, traceback = e$stack) # tracebackOf$(e))
+                    else:
+                        if is$none(result):
+                            return act(view$client.renderTemplate, [], context)
+
+                        return result
+
+
+            # -SDjangoService:cms-path=www/superiorCode/cms
+            structureCached = mapping()
+
+            def structureCache$add(path, data):
+                structureCached[path] = data
+
+            def cms():
+                try: view = structureCached[path]
+                except key$error:
+                    node = none # environment['page']
+                    public = 'www/public'
+
+                    return call.gen.code.serveCms \
+                        (request, response, \
+                         node, public, path)
+
+                if is$true(view):
+                    view = structure(path)
+                    structureCached[path] = view
+
+                return 'kernel/renderView' \
+                    (view, request)
+
+        '''
+
+        # page: EmulatedView
 
         core = runtime[runtime.Agent.System]
         if core is None:
@@ -1403,27 +1531,34 @@ class EmulatedView(View, DeepView):
                  outputLocals)
 
 
-        '''
-        interfaces/www/superior::
-            page(view):
-                context(trigger)::
-                    ns = locals().copy()
-                    del$('view$client', ns)
-
-                    return view$client.activateContextInferior \
-                        ('view(%r)' % path, ns).result()
-
-        '''
-
         localsClient = locals.copy()
         localsClient['view$client'] = self
 
-        task = page._activateContextServe \
-                (vm, q, response, protectedCont, context,
-                 path, localsClient, progr,
-                 user, initializeTask,
-                 audit, report, account,
-                 outputLocals)
+
+        # from .model import SubroutineHandle
+        try: SubroutineHandle = page._node._subroutineHandleClass
+        except AttributeError: pass
+        else:
+            if SubroutineHandle and isinstance \
+                (page, SubroutineHandle):
+
+                env = containerAccessor(dict()) # page = page))
+
+                page = EmulatedView(None,
+                    Trigger(page._subroutine,
+                        False, env), env)
+
+
+        if isinstance(page, EmulatedView):
+            task = page._activateContextServe \
+                    (vm, q, response, protectedCont, context,
+                     path, localsClient, progr,
+                     user, initializeTask,
+                     audit, report, account,
+                     outputLocals)
+
+        else:
+            raise ValueError(page)
 
         @task._onComplete
         def updateContext(_, *error, **kwd):
@@ -2418,6 +2553,7 @@ class Factory(Submapping):
             getContextEnvironment('types', default = None))
 
         except GrammaticalError as e:
+            # XXX Todo: sometimes things don't compile...
             raise ValueError(module) from e
 
         env = dict(container = containerAccessor(kwd['container']))

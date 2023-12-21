@@ -8,7 +8,7 @@ __all__ = ['log', 'logWarning', 'logError', 'logException', 'logWizards']
 def log(*args, **kwd):
     global log
     from stuphos.system.api import syslog # Ultimately: system.game.compartment
-    log = syslog # Rewrite.
+    log = syslog # Rewrite.  XXX Todo: what about importers?
 
     # runtime.call.System.Bridge.logSystem(*args, **kwd)
     # logJournal(*args, **kwd)

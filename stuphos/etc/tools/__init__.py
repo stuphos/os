@@ -173,6 +173,8 @@ def listing(function):
 
 builtin(listing = listing)
 
+builtin(columnize = columnize)
+
 
 # Todo: make this conditional/configurable
 import stuphos.system.path

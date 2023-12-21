@@ -8,7 +8,7 @@ from .db import Database
 
 from time import time as getSystemTime
 from pdb import runcall, set_trace as enter_debugger
-from os import getpid, getenv
+from os import getpid, getenv, environ as os_environ
 from queue import Empty
 import sys
 
@@ -112,9 +112,13 @@ class Core(Heartbeat):
         (options, args) = optArgs
 
         if globalize:
+            # Hmm, done before superclass constructor.
             global instance
             import builtins as builtin
             instance = builtin.core = self
+
+        # print(os_environ.get('here'))
+        os_environ.setdefault('here', '.')
 
         # Configure for continuous metal.
         if options.fast_vm:
@@ -143,14 +147,20 @@ class Core(Heartbeat):
 
         if options.local:
             # Bespoke configuration.
+            # debugOn()
             options.agent_system = options.local
-            options.services.insert(0, 'agentsystem=ph.interpreter.mental.library.model.localAgentSystem')
+            options.services.insert(0, 'facility.agentsystem=ph.interpreter.mental.library.model.service_localAgentSystem')
 
 
-        self.headless = options.headless
         self.consoleClass = consoleClass
 
-        if not options.headless:
+        # Combine conditionally.
+        self.headless = options.headless
+        self.headed = options.headed
+
+        if options.headed or not options.headless:
+            self._forceAlive = False
+
             if consoleClass is not None:
                 console = consoleClass.create(debug = options.debug) # interactive = options.interactive
                 self += console
@@ -182,7 +192,7 @@ class Core(Heartbeat):
             from world import player
             player.emergeInternalPeer = network.emergeInternalPeer
 
-            if not options.headless:
+            if options.headed or not options.headless:
                 console.attachNetwork(network)
 
 
@@ -202,7 +212,7 @@ class Core(Heartbeat):
         if isYesValue(configuration.Interpreter.emhw): # or options.emhw:
             EnableEMHW()
 
-        if not options.headless:
+        if options.headed or not options.headless:
             def ehwm(console):
                 # Console might be None. (?)
                 if console is not None:
@@ -276,6 +286,8 @@ class Core(Heartbeat):
 
         self.optimisticTermination = not options.asynchronous and \
             (bool(options.file) or bool(options.admin_command))
+
+        # self._forceAlive = not self.optimisticTermination
 
 
         # The engine will be run another way.  Just return Core.

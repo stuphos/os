@@ -413,3 +413,41 @@ def isNoValue(value):
         return value.lower() in ['no', 'false', '0', 'off']
 
     return not bool(value)
+
+
+def columnize(items, nr_cols, fmt_width, max_width = None, spacing = '  '):
+    buf = new_buffer()
+
+    if max_width:
+        fmt = '%%-%d.%ds' % (fmt_width, max_width)
+    else:
+        fmt = '%%-%ds' % fmt_width
+
+    fmt += spacing
+    col = 1
+    nr_cols = max(1, int(nr_cols))
+
+    for i in items:
+        buf.write(fmt % i)
+        if not (col % nr_cols):
+            buf.write('\n')
+
+        col += 1
+
+    # XXX no newline added when uneven
+    if col % nr_cols:
+        buf.write('\n')
+
+    return buf.getvalue()
+
+def autoColumnize(items, against, sort = True):
+    if sort:
+        items = sorted(items)
+
+    items = list(items)
+    x = max(len(i) for i in items)
+    x = max(2, x)
+
+    return columnize(items, float(against) / x, x)
+
+columnize.auto = autoColumnize

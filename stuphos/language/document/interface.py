@@ -125,7 +125,7 @@ def load(source, classes, defaultName, **kwd):
 		raise RuntimeError('Incompatible continuation stack!') from e
 
 
-def getFactories():
+def getFactories(**kwd):
 	yield 'stuph', Factory
 
 	from stuphos import getConfig
@@ -135,15 +135,20 @@ def getFactories():
 		from spatial.spherical import structure as spatial
 		yield 'world', spatial.Factory
 
+	for (name, value) in kwd.items():
+		if isinstance(value, Factory):
+			yield (name, value)
+
 def document(source, **kwd):
 	# A raw load skips installation of core factory classes, so we
 	# can create a controlled, discriminatory environment.
 	# Auto WMC
 	#import pdb; pdb.set_trace()
-	return load(source, dict(getFactories()), 'stuph', **kwd)
+	return load(source, dict(getFactories(**kwd.pop('classes', dict()))), 'stuph', **kwd)
 
 def html(source, **kwd):
-	return load(source, dict(getFactories(), html = HTMLFactory), 'html', **kwd)
+	return load(source, dict(getFactories(**kwd.pop('classes', dict())), html = HTMLFactory), 'html', **kwd)
+
 
 def system(source, **kwd):
 	return load(source, dict(system = SystemFactory), 'system', **kwd)

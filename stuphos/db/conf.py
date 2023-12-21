@@ -1,6 +1,8 @@
 # Database connection configuration service.
 #
 from contextlib import contextmanager
+from os.path import expandvars
+
 import json
 
 class ConfigurationError(ValueError):
@@ -73,10 +75,15 @@ class DBCore(dict):
 			return path.format(root = self.rootpath)
 
 		def __init__(self, **fields):
-			self.rootpath = fields.get('root-path')
-			self.filepath = fields.get('file-path')
+			try: self.rootpath = expandvars(fields['root-path'])
+			except KeyError:
+				self.rootpath = None
 
-			try: self.path = fields['path']
+			try: self.filepath = expandvars(fields['file-path'])
+			except KeyError:
+				self.filepath = None
+
+			try: self.path = expandvars(fields['path'])
 			except KeyError:
 				if self.filepath is None:
 					raise ConfigurationError('Sqlite databases must define at least file-path')

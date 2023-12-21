@@ -6,6 +6,80 @@ from json import dumps as toJsonString, loads as loadJsonString
 
 PACKAGE_META_NAME = '.package.meta'
 
+
+def root_rewriteNode(node):
+    # Transform tree root node name.
+    if node['name'] is None:
+        node['name'] = ''
+
+    # debugOn()
+    return node
+
+
+# renderLibraryPackage
+def node_type_libraryConvert(type, node):
+    if type == 'directory':
+        return (type, node['name'], map(node_libraryConvert, node['children']))
+
+    elif type == 'module':
+        return (type, node['name'], node['program'])
+
+    elif type == 'structure':
+        return (type, node['name'], node['document'])
+
+    elif type == 'media':
+        # content_type
+        return (type, node['name'], node['content'])
+
+
+def node_libraryConvert(node):
+    type = node['type']
+
+    if type == 'module':
+        # programmer
+        yield from node_type_libraryConvert(node)[:2]
+
+    elif type == 'structure':
+        # programmer content owner
+        yield from node_type_libraryConvert(node)[:2]
+
+    elif type == 'media':
+        yield from node_type_libraryConvert(node)[2:]
+
+    elif type == 'directory':
+        for (i_type, i_name, i_data) in map(node_type_libraryConvert, node['children']):
+            if i_type == 'directory':
+                # Collect interfaces
+                i = dict()
+                r = dict(interfaces = i)
+
+                for (name, data) in i_data:
+                    if name == 'interfaces':
+                        r.update(data)
+                    else:
+                        i[name] = data
+
+                yield r
+
+                # yield (i_name, dict(i_data))
+
+            elif i_type == 'module':
+                yield (i_name, i_data)
+
+            elif i_type == 'structure':
+                yield ('interfaces', {i_name: i_data})
+
+
+def node_libraryToPackage(node):
+    return node_libraryConvert \
+        (root_rewriteNode(node))
+
+def libraryToPackage(node):
+    return node_libraryToPackage \
+        (node.exported)
+
+
+# Render from library node.
 def b64_encode(s):
     # treat as bytes (for media content)
     # s = s.encode()
@@ -30,12 +104,13 @@ def renderOwnedContent(node, srcContent, srcOwner, destContent, destOwner, fixup
         yield '%s::' % quoteStringIf(node['name'])
         yield indent(fixupContentHeading(node[srcContent]))
 
-def renderPackageString(node, fixupHeading = False):
+
+def render_packageConvert(node, fixupHeading = False):
     def fixupContentHeading(content):
         return content.lstrip() if fixupHeading else content
 
     @nling
-    def convert(node):
+    def packageConvert(node):
         type = node['type']
 
         if type == 'directory':
@@ -56,21 +131,21 @@ def renderPackageString(node, fixupHeading = False):
                         m.append(c)
                         continue
 
-                    yield indent(convert(c))
+                    yield indent(packageConvert(c))
 
                 if s:
                     # yield indent('interfaces$:')
                     yield indent('interfaces:')
 
                     for c in s:
-                        yield indent(convert(c), level = 2)
+                        yield indent(packageConvert(c), level = 2)
 
                 if m:
                     # yield indent('media$:')
                     yield indent('media:')
 
                     for c in m:
-                        yield indent(convert(c), level = 2)
+                        yield indent(packageConvert(c), level = 2)
 
             else:
                 yield '%s: []' % quoteStringIf(node['name'])
@@ -105,15 +180,13 @@ def renderPackageString(node, fixupHeading = False):
                 yield '%s::' % quoteStringIf(node['name'])
                 yield indent(b64_encode(node['content']))
 
-    def rewrite(node):
-        # Transform tree root node name.
-        if node['name'] is None:
-            node['name'] = ''
 
-        # debugOn()
-        return node
+    return packageConvert(root_rewriteNode(node))
 
-    return convert(rewrite(node.exported))
+
+def renderPackageString(node, *args, **kwd):
+    return render_packageConvert \
+        (node.exported, *args, **kwd)
 
 
 class filesystem:
@@ -467,9 +540,7 @@ class fsPackageCore:
         def lookup(self, path, *args):
             return self[path]
 
-    def __init__(self, path):
-        self.path = io.path(path)
-        self.root = self.Folder()
+    def __init__(self):
         self.init()
 
     def addFolder(self, *args, **kwd):
@@ -482,9 +553,137 @@ class fsPackageCore:
         print('addmedia ' + str(args))
 
     def init(self):
-        pass
+        self.root = self.Folder()
     def finished(self):
         pass
+
+
+class bufferPackageCore(fsPackageCore):
+    '''
+    import AgentSystem as baseAgentSystem
+
+    class package_resident:
+        packageString = property(renderPackageString)
+        package_library = property(libraryToPackage)
+
+
+    class packageCore(bufferPackageCore, package_resident):
+        # ETL Format Optimization:
+
+        @property
+        def packageString(self):
+            return renderPackageString(self.root)
+
+
+        class Node(baseAgentSystem.Node, package_resident):
+            class Module(baseAgentSystem.Node.Module, package_resident):
+                pass
+
+            class Structure(baseAgentSystem.Node.Structure, package_resident):
+                pass
+
+            class Document(baseAgentSystem.Node.Document, package_resident):
+                pass
+
+
+            # class Module(baseAgentSystem.Node.Module):
+                # @property
+                # def exported(self):
+                #     progr = self.programmer
+                #     return dict(type = 'module',
+                #                 name = self.name,
+                #                 nameSlashed = self.nameSlashed,
+                #                 programmer = None if progr is None else progr.principal,
+                #                 program = self.program)
+
+            # class Structure(baseAgentSystem.Node.Structure):
+                # @property
+                # def exported(self):
+                #     progr = self.programmer
+                #     return dict(type = 'structure',
+                #                 name = self.name,
+                #                 nameSlashed = self.nameSlashed,
+                #                 document = self.document,
+                #                 programmer = None if progr is None else progr.principal)
+
+            # class Document(baseAgentSystem.Node.Document):
+                # @property
+                # def exported(self):
+                #     return dict(type = self.KEY,
+                #                 name = self.name,
+                #                 content_type = self.type,
+                #                 nameSlashed = self.nameSlashed,
+                #                 content = self.content)
+
+            # class Media(Document):
+
+            # class baseLink(baseAgentSystem.Node.baseLink): # (Document):
+            # class SystemLink(baseLink, baseAgentSystem.Node.SystemLink):
+            # class SymbolicLink(SystemLink):
+
+
+            # @property
+            # def exported(self, children = True):
+            #     r = dict(type = 'directory',
+            #              name = self.name)
+
+            #     if children:
+            #         sub = []
+            #         for c in self.values():
+            #             try: sub.append(c.exported)
+            #             except AttributeError:
+            #                 pass
+
+            #         r['children'] = sub
+            #     else:
+            #         r['children'] = list(self.keys())
+
+            #     return r
+
+    '''
+
+    # Duplicate of library model:
+    def addFolder(self, path, name):
+        folder = self[path] if path else self.root
+        node = folder + name
+        self.saveNode(node, setEntityId = True)
+        return node
+    def addModule(self, path, name, source, programmer = None):
+        folder = self[path] if path else self.root
+        head = (path + '/') if path else ''
+        progr = None if programmer is None else getWebProgrammer()(programmer)
+        node = self.Node.Module(name, head + name, source, progr, self)
+        folder[name] = node
+        self.saveNode(node, setEntityId = True)
+        return node
+    def addStructure(self, path, name, source, programmer = None):
+        folder = self[path] if path else self.root
+        head = (path + '/') if path else ''
+        progr = None if programmer is None else getWebProgrammer()(programmer)
+        node = self.Node.Structure(name, head + name, source, progr, self)
+
+        try: folder[name] = node
+        except TypeError:
+            raise InvalidNewStructurePath(folder, name)
+
+        # debugOn()
+        self.saveNode(node, setEntityId = True)
+        return node
+    def addDocument(self, path, name, type, source):
+        folder = self[path] if path else self.root
+        head = (path + '/') if path else ''
+        node = self.Node.Document(name, type, head + name, source, self)
+        folder[name] = node
+        self.saveNode(node, setEntityId = True)
+        return node
+    def addMedia(self, path, name, content, content_type = None):
+        'A version of addDocument that redefines the arguments.'
+        folder = self[path] if path else self.root
+        head = (path + '/') if path else ''
+        node = self.Node.Media(name, content_type, head + name, content, self)
+        folder[name] = node
+        self.saveNode(node, setEntityId = True)
+        return node
 
 
 class unpackCoreAttr:
@@ -500,6 +699,10 @@ class unpackCoreAttr:
 
 
 class fsUnpackCore(unpackCoreAttr, fsPackageCore):
+    def __init__(self, path):
+        self.path = io.path(path)
+        super().__init__()
+
     def finished(self):
         # Overwrite.
         self.path(self.packageMetaName).write \

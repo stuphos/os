@@ -15,6 +15,7 @@ from .orm import VariableDBNativeTool, createSQLObjectTable as createSqlTable
 
 from contextlib import contextmanager
 from datetime import datetime
+from os import getenv # .path import expandvars, normpath
 
 
 class NoCoreDatabasePolicy(RuntimeError):
@@ -91,7 +92,16 @@ class VariableDB(writeprotected, representable):
 			# 	path = io.path(dbConf.path.format(rootpath = rootpath))
 			# else:
 
-			path = io.here(dbConf.path)
+			# path = io.here(dbConf.path)
+			here = getenv('here') # expandvars('${here}')
+
+			# It seems as though pathOpen doesn't work the same
+			# as what connectionForURI does.
+			if here == '.' or not here:
+				path = io.here(dbConf.path)
+			else:
+				path = here + '/' + dbConf.path
+
 			handle = sqlite.pathOpen(path)
 
 			return self._OpenConfHandle(name, dbConf, handle, **cfg)

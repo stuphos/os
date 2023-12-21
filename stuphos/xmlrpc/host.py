@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 from errno import EINTR
 from select import error as select_error
 from threading import Thread
+from os.path import expandvars
 
 import xmlrpc.client
 import sys
@@ -474,9 +475,12 @@ class HostRpc(XMLRPC):
 
         if config.certificate is not None:
             import ssl
-            self.socket = ssl.wrap_socket (self.socket, certfile = config.certificate,
-                                           keyfile = config.keyfile,
-                                           server_side = True)
+            # print(config.certificate)
+            self.socket = ssl.wrap_socket \
+                (self.socket,
+                 certfile = expandvars(config.certificate) if config.certificate else None,
+                 keyfile = expandvars(config.keyfile) if config.keyfile else None,
+                 server_side = True)
 
         if methods is not None:
             self.funcs = methods

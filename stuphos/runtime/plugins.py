@@ -55,6 +55,7 @@ class PluginManager(Facility):
                 facilities.append((opt, cfg[opt]))
 
         # Load facilities from command-line.
+        # debugOn()
         facilities.extend(self.parseServicesCmdline(core.cmdln['options'].services))
 
         # from ph.interpreter.mental.library.theta import psOpGameVsz
