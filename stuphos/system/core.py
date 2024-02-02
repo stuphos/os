@@ -44,6 +44,20 @@ def parseArgvToKwd(args):
 
     return kwd
 
+def fileCapture(module, name, path, mode = 'a'):
+    setattr(module, '_captureOriginal_' + name,
+            getattr(module, name))
+
+    if isinstance(path, str):
+        new = open(path, mode)
+    else:
+        new = path
+
+    setattr(module, name, new)
+
+    return new
+
+
 class Core(Heartbeat):
     class Pulse(Heartbeat.Task):
         # This could go in system.heartbeat
@@ -110,6 +124,18 @@ class Core(Heartbeat):
                  consoleClass = None):
 
         (options, args) = optArgs
+
+        if options.logfile:
+            fileCapture(sys, 'stderr',
+                fileCapture(sys, 'stdout',
+                    options.logfile))
+
+        else:
+            if options.stdout:
+                fileCapture(sys, 'stdout', options.stdout)
+            if options.stderr:
+                fileCapture(sys, 'stderr', options.stderr)
+
 
         if globalize:
             # Hmm, done before superclass constructor.
@@ -219,6 +245,10 @@ class Core(Heartbeat):
                     console.state = 'Playing' # 'Shell'
 
                     if options.admin_command:
+                        # nonlocal args
+                        # debugOn()
+                        # print(args)
+
                         # todo: do this after enter game?
                         console.input = options.admin_command
                         # if options.single_command_exit:
@@ -268,10 +298,15 @@ class Core(Heartbeat):
             self._boot_runModuleScript = boot_runModuleScript
 
         if options.admin_script:
+            # For django dependency support, defer this like module script
             from stuphos.runtime.architecture.lookup import LookupObject
-            adminScript = LookupObject(options.admin_script)
-            adminScript(**parseArgvToKwd(options.admin_script_args))
 
+            def boot_runAdminScript():
+                adminScript = LookupObject(options.admin_script)
+                adminScript(**parseArgvToKwd(options.admin_script_args))
+
+
+            self._boot_runAdminScript = boot_runAdminScript
 
         # How to run 'quick' command mode:
         # --network=false --no-init -dn --blocking=0
@@ -316,6 +351,18 @@ class Core(Heartbeat):
     #     # Todo: if console is enabled, do not block!
     #     return self.cmdln['options'].blocking
 
+
+    _bootNotify_bootedState = False
+
+    def parallel_bootNotify_done(self):
+        self._bootNotify_bootedState = True
+        self._bootNotify_signal.set()
+
+    def parallel_bootNotify_wait(self):
+        if not self._bootNotify_bootedState:
+            self._bootNotify_signal.wait()
+
+
     def isNetworkEnabled(self):
         # debugOn()
         network = self.cmdln['options'].network
@@ -329,6 +376,9 @@ class Core(Heartbeat):
 
     def bootMudStart(self, options, stuphlib, worldModule):
         # Initialize MUD Package.
+        from threading import Event
+        self._bootNotify_signal = Event()
+
         import stuphos
 
         stuphos.bootStart(options.config_file,

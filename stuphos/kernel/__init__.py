@@ -22,13 +22,10 @@ if isYesValue(getConfig('metal', 'VM')):
 
 else:
 	from ph.emulation.machine.virtual import Machine
-	from ph.emulation.machine.virtual import MachineCore
 	from ph.emulation.machine.virtual import Native
 	from ph.emulation.machine.virtual import Pure
-	from ph.emulation.machine.virtual import TaskControl
 	# from ph.emulation.machine.virtual import startTask
 
-	from ph.emulation.machine.virtual import machine
 	from ph.emulation.machine.virtual import checkActiveTasks
 	from ph.emulation.machine.virtual import checkActiveTimers
 	from ph.emulation.machine.virtual import BypassReturn
@@ -36,6 +33,11 @@ else:
 	from ph.emulation.machine.virtual import Continuation
 	from ph.emulation.machine.virtual import resolve_procedure
 	from ph.emulation.machine.virtual import EmptyStackError
+
+	from ph.emulation.machine.model import MachineCore
+	from ph.emulation.machine.model import TaskControl
+	from ph.emulation.machine.model import machine
+	from ph.emulation.machine.model import taskControlObject
 
 	from ph.emulation.machine import currentVMTask
 	from ph.emulation.machine import vmCurrentTask
@@ -79,7 +81,7 @@ else:
 from ph.emulation.security import RelationNetwork
 
 
-# debugOn()
+configurationTruth.MUD.debug_kernel_import and debugOn()
 try:
 	from ph.interpreter import mental as interpreter
 

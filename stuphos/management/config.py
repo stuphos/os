@@ -34,6 +34,14 @@ def getParentPath(path, level = 1):
 # Configuration Files.
 from configparser import ConfigParser, DEFAULTSECT, NoOptionError, NoSectionError
 
+def newConfigParserFromValues(**sections):
+    config = ConfigParser()
+    config.read_dict(sections)
+    return config
+
+def loadConfigFromValues(**sections):
+    return Configuration(newConfigParserFromValues(**sections))
+
 def loadConfig(filename, defaults = None):
     config = ConfigParser(defaults = defaults)
     config.read([filename])
@@ -147,7 +155,6 @@ class Configuration:
     class _addressorTruth(_addressor):
         def getSectionOption(self, section, option):
             return isYesValue(self._config.get(option, section))
-
 
     def __init__(self, config, filename = None):
         self._config = config

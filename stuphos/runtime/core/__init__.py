@@ -416,6 +416,16 @@ def boot_parallelStart(core):
         del core._boot_runModuleScript
         runModuleScript()
 
+    try: runAdminScript = core._boot_runAdminScript
+    except AttributeError: pass
+    else:
+        del core._boot_runAdminScript
+        runAdminScript()
+
+
+    # Notify all waiters: stuphos.system.cli
+    core.parallel_bootNotify_done()
+
 
 def installWorld():
     try: from stuphmud.server.zones import initForCore

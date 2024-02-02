@@ -113,6 +113,11 @@ class BuildingWM(extensionObject):
 
 @_safe_native
 def parseWm(frame, source, *args, **kwd):
+	'''
+	'stuphos.language.document.native.parseMessage'
+
+	'''
+
 	source = 'WMC []\n\n' + str.__str__(source)
 	return BuildingWM._parse(source, *args, **kwd)
 

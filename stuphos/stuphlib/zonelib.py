@@ -49,13 +49,13 @@ class ZoneReader(RecordReader):
 
         parts=self.readLine().split()
         l=len(parts)
-        if l is 5:
+        if l == 5: # is 5:
             top, flags, lifespan, resetMode, continent = parts
             continent=int(continent)
-        elif l is 4:
+        elif l == 4: # is 4:
             top, flags, lifespan, resetMode = parts
             continent=defaultContinent
-        elif l is 3:
+        elif l == 3: # is 3:
             top, lifespan, resetMode = parts
             flags=''
             continent=defaultContinent

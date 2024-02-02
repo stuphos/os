@@ -994,7 +994,10 @@ class EmulatedView(View, DeepView):
 
 
             @property
-            def securityContext(self):
+            def billingOff(self):
+                return self._securityContext(billingOff = True)
+
+            def _securityContext(self, billingOff = False):
                 # Note: requiring a login permission here complicates serving user-to-user
                 # views, but we can't assume that the requesting user wants to give all
                 # control to any other arbitrary user (besides the system) simply because
@@ -1016,21 +1019,36 @@ class EmulatedView(View, DeepView):
                     print(f'[http$request$user$context] {e}')
                     return
 
-                return securityContext(Programmer(principal), user = self._user)
+                return securityContext(Programmer(principal),
+                    user = None if billingOff else self._user)
+                    # , billingOff = billingOff)
 
-            @property
-            def billingContext(self):
-                from stuphos.kernel import securityContext, vmCurrentTask
-                task = vmCurrentTask()
+                # from phsite.network.adapter.sessions import SessionAdapter
+                # self._perspectiveCheck(SessionAdapter, 'Security context not available!')
 
-                # XXX Why are we checking primary identity when what we really want
-                # is user identity.
-                try: task.checkAccessSystem(['system:user:context', self._primaryIdentity], 'charge')
-                except NoAccessException as e:
-                    print(f'[http$request$user$context$billing] {e}')
-                    return
+                # from ph.interpreter.mental.native import _securityContext
+                # from stuphos.kernel import Programmer
 
-                return securityContext(task.findProgrammer(), user = self._user)
+                # # XXX billable?
+                # return _securityContext(Programmer(self._object.name),
+                #                         billingOff = billingOff)
+
+            securityContext = property(_securityContext)
+
+            # @property
+            # def securityContext(self):
+            #     from stuphos.kernel import securityContext, vmCurrentTask
+            #     task = vmCurrentTask()
+
+            #     # XXX Why are we checking primary identity when what we really want
+            #     # is user identity.
+            #     try: task.checkAccessSystem(['system:user:context', self._primaryIdentity], 'charge')
+            #     except NoAccessException as e:
+            #         print(f'[http$request$user$context$billing] {e}')
+            #         return
+
+            #     return securityContext(task.findProgrammer(), user = self._user)
+
 
             def checkAccessError(self, op, resource):
                 from stuphos.kernel import Programmer # , vmCurrentTask
@@ -1084,7 +1102,7 @@ class EmulatedView(View, DeepView):
                 return checkAccess(self.context._path + self._path) # + subresource
 
             # Todo: provide this level security for all other cases? :security:
-            return True
+            return True # 'request-security-context'
 
         # if isinstance(sec, dict):
         #     path = sec['path']
@@ -1169,7 +1187,8 @@ class EmulatedView(View, DeepView):
         else:
             (success, result, task) = self._activateQuery \
                 (context, requestAdapter, request, path,
-                 query, response, progr, user, account)
+                 query, response, progr, user, account,
+                 passCheck)
 
             if success:
                 # debugOn()
@@ -1185,7 +1204,7 @@ class EmulatedView(View, DeepView):
 
 
     def _activateQuery(self, context, requestAdapter, request, path,
-                       query, response, progr, user, account):
+                       query, response, progr, user, account, passCheck):
 
         from world import heartbeat as vm # XXX Todo: runtime.System.Engine
 
@@ -1213,9 +1232,7 @@ class EmulatedView(View, DeepView):
         # debugOn()
 
         if requestAdapter is None:
-            if request is None:
-                requestAdapter = None
-            else:
+            if request is not None:
                 requestAdapter = self._RequestAdapter(request, query = query)
 
         locals = dict(request = requestAdapter)
@@ -1275,7 +1292,7 @@ class EmulatedView(View, DeepView):
              path, locals, progr,
              user, initializeTask,
              audit, report, account,
-             outputLocals)
+             outputLocals, passCheck)
 
 
         # (success, result) = q.get() # *
@@ -1291,11 +1308,19 @@ class EmulatedView(View, DeepView):
                          path, locals, progr,
                          user, initializeTask,
                          audit, report, account,
-                         outputLocals):
+                         outputLocals, passCheck):
 
         # debugOn()
 
         module = self.context._module
+
+        if passCheck == 'request-security-context':
+            _moduleContext = module
+
+            module = Native(lambda:
+                self._RequestAdapter(request) \
+                    .securityContext(_moduleContext))
+
 
         # Race request thread doesn't set this onCompleteHandler before heartbeat
         # thread picks up activated context trigger and executes/finishes it.
@@ -1326,24 +1351,28 @@ class EmulatedView(View, DeepView):
                     q.put((True, result))
 
 
-        task = self.context._activate(module,
-                                      name = f'view({path})',
-                                      locals = locals,
-                                      programmer = progr,
-                                      traceback = report,
-                                      account = account,
-                                      initialize = initializeTask,
-                                      timeout = self.timeout or self.getDefaultTimeout(),
-                                      audit = audit,
-                                      # task.operator is only set if audit is 'debug'
-                                      operator = progr.principal if progr is not None else None,
-                                      user = user,
-                                      onComplete = completeViewRequest)
+        task = self.context._activate \
+            (module,
+              name = f'view({path})',
+              locals = locals,
+              programmer = progr,
+              traceback = report,
+              account = account,
+              initialize = initializeTask,
+              timeout = self.timeout or self.getDefaultTimeout(),
+              audit = audit,
+              # task.operator is only set if audit is 'debug'
+              operator = progr.principal if progr is not None else None,
+              user = user,
+              onComplete = completeViewRequest)
 
         return task
 
     _activateContextServe = _activateContext
 
+
+    from types import GeneratorType as _generatorType
+    _accepted_responseTypes = (list, tuple, _generatorType) # , HttpResponse)
 
     def _completeView_render(self, vm, task, outputLocals, module):
         from stuphos.kernel import EmptyStackError
@@ -1358,10 +1387,21 @@ class EmulatedView(View, DeepView):
 
         if isinstance(responseValue, (str, bytes)):
             return dict(content = responseValue)
+
         elif isinstance(responseValue, dict):
             return responseValue
+        elif isinstance(responseValue, self._accepted_responseTypes):
+            return responseValue
+
         elif responseValue is not None: # and responseValue != (None,):
+            from django.http import HttpResponse
+
+            if isinstance(responseValue, HttpResponse):
+                return responseValue
+
+            # return HttpResponse(responseValue)
             raise TypeError(type(responseValue))
+
         else:
             # By default, this requires a permission because django templates are
             # unsafe.  When that situation is remedied, grant to group:public.
@@ -1442,13 +1482,28 @@ class EmulatedView(View, DeepView):
 
         return task
 
+
+    @classmethod
+    def _FromSubroutineAndEnv(self, subroutine, env, *args, **kwd):
+        '''
+        EmulatedView._FromSubroutineAndEnv
+
+        '''
+
+        env = containerAccessor(env)
+
+        return EmulatedView(None,
+            Trigger(_subroutine,
+                False, env), env)
+
+
     def _activateContextSuperior \
         (self, vm, q, request, response,
          protectedCont, context,
          path, locals, progr,
          user, initializeTask,
          audit, report, account,
-         outputLocals):
+         outputLocals, passCheck):
 
         '''
         interfaces/www/superior::
@@ -1487,7 +1542,8 @@ class EmulatedView(View, DeepView):
 
 
             # -SDjangoService:cms-path=www/superiorCode/cms
-            structureCached = mapping()
+            structureCached = mapping \
+                ([['link'], true])
 
             def structureCache$add(path, data):
                 structureCached[path] = data
@@ -1536,17 +1592,18 @@ class EmulatedView(View, DeepView):
 
 
         # from .model import SubroutineHandle
-        try: SubroutineHandle = page._node._subroutineHandleClass
-        except AttributeError: pass
-        else:
-            if SubroutineHandle and isinstance \
-                (page, SubroutineHandle):
+        # Handled in views.
+        # try: SubroutineHandle = page._node._subroutineHandleClass
+        # except AttributeError: pass
+        # else:
+        #     if SubroutineHandle and isinstance \
+        #         (page, SubroutineHandle):
 
-                env = containerAccessor(dict()) # page = page))
+        #         env = containerAccessor(dict()) # page = page))
 
-                page = EmulatedView(None,
-                    Trigger(page._subroutine,
-                        False, env), env)
+        #         page = EmulatedView(None,
+        #             Trigger(page._subroutine,
+        #                 False, env), env)
 
 
         if isinstance(page, EmulatedView):
@@ -1614,13 +1671,13 @@ class StaticView(View):
 class AliasedView(View, DeepView):
     __public_members__ = ['path']
 
-    def __init__(self, path):
+    def __init__(self, path, format = None):
         if not path:
             self._query = []
             path = []
 
         if isinstance(path, str):
-            (_, qs) = splitquery(path)
+            (path, qs) = splitquery(path)
             self._query = parse_qs(qs).items()
 
             path = path.split('/')
@@ -1631,6 +1688,11 @@ class AliasedView(View, DeepView):
             raise TypeError(type(path).__name__)
 
         self.path = path
+
+        if format is not None:
+            self.format = format
+
+    format = False
 
     class _recursionGraph(set):
         def __init__(self, initial):
@@ -1643,6 +1705,11 @@ class AliasedView(View, DeepView):
                 return True
 
             self.add(new)
+
+    def _pathGen(self, kwd):
+        return self.path.format \
+            (view = kwd['view_path']) \
+            if self.format else self.path
 
     def _render(self, request = None, **kwd):
         # XXX Fails to detect recursion.
@@ -1677,16 +1744,24 @@ class AliasedView(View, DeepView):
         # path = self.path + kwd['view_path']
         # print(f'[alias] {"/".join(path)}')
 
-        path = self.path
+        path = self._pathGen(kwd)
 
         get = request.GET
+
+        r = get # dict()
+        m = getattr(get, '_mutable', False)
+
+        try: get._mutable = True
+        except AttributeError: pass
+
         for (name, value) in self._query:
             try: v = get[name]
             except KeyError:
                 if isinstance(value, list) and len(value) == 1:
                     # XXX AttributeError: This QueryDict instance is immutable
-                    get[name] = value[0]
-                    break
+                    # debugOn()
+                    r[name] = value[0]
+                    continue # break
 
                 v = []
             else:
@@ -1694,7 +1769,11 @@ class AliasedView(View, DeepView):
                 if isinstance(v, str):
                     v = [v]
 
-            get[name] = v + value
+            r[name] = v + value
+
+        # request.GET = get.__class__(r)
+        try: get._mutable = m
+        except AttributeError: pass
 
         if self._query:
             request._stuphos_resetGET = True
@@ -1987,7 +2066,8 @@ class Factory(Submapping):
     from .db.vardb import db, table
 
     def trigger(self, name, value, **kwd):
-        from stuphos.language.document.interface import getContextEnvironment
+        # See end of module:
+        # from stuphos.language.document.interface import getContextEnvironment
 
         if isinstance(value, str):
             code = value
@@ -2007,6 +2087,7 @@ class Factory(Submapping):
         return Trigger(code, synchronous, env, path = path)
 
     task = let = evaluation = code = trigger
+
 
     def emulation(self, name, value, **kwd):
         return None
@@ -2084,6 +2165,10 @@ class Factory(Submapping):
 
         return AliasedView(value)
     node = alias
+
+    def mapAlias(self, name, value, **kwd):
+        return AliasedView(value, format = True)
+
 
     def extends(self, name, value, **kwd):
         return '{%% extends %r %%}' % value
@@ -2743,6 +2828,150 @@ setattr(Factory, 'html.script', htmlScript)
 setattr(Factory, 'class', syntheticClass)
 Factory.object = Factory.formula = getattr(Factory, 'class')
 
+
+class JythonFactory: # (Submapping):
+    class _jythonTriggerClass: # (writeprotected):
+        # _nativeClass = Pure # Native
+
+        # _java_code_source = '{product.protocol}/{product.namespace}/{product.brand}/{programmer}/{path}'
+        _product = dict(namespace = 'stuphos', brand = 'null', protocol = 'https:/')
+
+        def __init__(self, code, env, path = None,
+                     product = None, nativeClass = None):
+
+            self._path = path
+            self._code = code
+            self._env = env
+
+            if nativeClass is not None:
+                self._nativeClass = nativeClass
+            else:
+                # Import and set on class but only if not set already.
+                try: self.__class__._nativeClass
+                except AttributeError:
+                    from stuphos.kernel import Pure as nativeClass
+                    self.__class__._nativeClass = nativeClass
+
+            if product is not None:
+                self._product = dict \
+                    (self._product, **product)
+
+
+        def _jythonCodeSource(self, programmer = None, user = None):
+            p = self._product
+
+            return '/'.join \
+                ([p.protocol,
+                  p.namespace,
+                  p.brand,
+                  programmer,
+                  user])
+
+                # self._java_code_source.format \
+                #     (path = '/'.join(self._path),
+                #      product = self._product,
+                #      programmer = programmer or '',
+                #      user = user.username if user else '')
+
+        # @classmethod
+        def _jythonCompile(self, code, *args, **kwd):
+            # Todo: wrap in function?
+            from org.python.core import compile
+
+            return compile(_code, self
+                ._jythonCodeSource
+                    (*args, **kwd),
+                    'exec')
+
+        def _compartmentalize(self, code):
+            return code # parallelized(code)
+
+
+        # Trigger:
+        @property
+        def _module(self):
+            return self._compartmentalize \
+                (self._jythonCompile \
+                    (self._code))
+
+        def _activate(self, procedure, *args, **kwd):
+            # name, locals, programmer, traceback, account,
+            # initialize, timeout, audit, operator, user,
+            # onComplete
+
+            nativeClass = kwd.pop \
+                ('nativeClass',
+                 self._nativeClass)
+
+            procedure = nativeClass \
+                (procedure)
+
+            create = dict(procedure = procedure,
+                          onComplete = onComplete,
+                          environ = self._env)
+
+            create.update(kwd)
+
+            return EmulatedCodeTaskCreation \
+                .Create(self, **create)
+
+
+        # View:
+        # def _render(self, request, response, path, context):
+        #     return self._jythonCompile(code) \
+        #         (request, response, path, context,
+        #          self._env)
+
+        #     # return dict(status = 500, content = self._debugging
+        #     #     (self._noAccess, request, task, *result,
+        #     #      view = self._path, path = path))
+
+
+    @classmethod
+    def _jythonTriggerFrame(self, brand, frame, code, env, path):
+        return self._jythonTriggerClass \
+            (code, env, path = path,
+             product = dict(brand = brand),
+             nativeClass = Native if frame
+                else None)
+
+
+    _jsp_brand = 'null'
+
+    @classmethod
+    def _jythonTrigger(self, name, code, **kwd):
+        '''
+        (view):
+            template::
+                {{ system }}
+
+            context(trigger)::
+                from java.lang import System
+                context['system'] = System \
+                    .toString(System)
+
+        '''
+
+        from stuphos.language.document.interface \
+            import getContextEnvironment # ,
+            # containerAccessor
+
+        assert isinstance(code, str)
+
+        env = containerAccessor \
+            (kwd['container'])
+
+        # For relative dotlevel path lookups.
+        path = getContextEnvironment \
+            ('document', default = None)
+
+        return self._jythonTriggerFrame \
+            (self._jsp_brand, False, code,
+             env, path)
+
+    # trigger = _jythonTrigger
+
+
 from stuphos.kernel import GirlCore
 class LibraryCore(GirlCore):
     def loadEntities(self, cfg, nodeClass):
@@ -2809,4 +3038,8 @@ class HTMLFactory(Submapping):
         # return _safe_native(build)
 
 
-from stuphos.language.document.interface import getContextEnvironment
+from stuphos.language.document.interface \
+    import getContextEnvironment, \
+    pathLibraryStructureCache
+
+Factory.cache = pathLibraryStructureCache._FromNodeStructure # _FromStructure

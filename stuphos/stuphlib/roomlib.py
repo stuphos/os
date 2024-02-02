@@ -13,13 +13,13 @@ class RoomReader(RecordReader):
 			line = self.readLineNoEOF(self.EOFNoDollar).strip()
 			c = line[0]
 
-			if c is 'S':
+			if c == 'S': # is 'S':
 				break
 
-			if c is '$':    # detected end of records
+			if c == '$': # is '$':    # detected end of records
 				return  # return None-value to terminate caller
 
-			if c is 'D':
+			if c == 'D': # is 'D':
 				dir      = int(line[1:].strip())
 				descr    = self.tildeString()
 				keyword  = self.tildeString()
@@ -30,9 +30,9 @@ class RoomReader(RecordReader):
 
 				self.roomExit(dir, int(roomLinkNo), keyword, descr, int(key), ASCIIFlagDecode(flags))
 
-			elif c is 'E':
+			elif c == 'E': # is 'E':
 				self.roomDescription(self.tildeString(), self.tildeString())
-			elif c is '#':
+			elif c == '#': # is '#':
 				# Raise warning accordingly??
 				return int(line[1:])
 			else:   # Not expecting a hash mark before 'S' terminator.

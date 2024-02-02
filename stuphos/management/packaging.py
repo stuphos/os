@@ -1040,7 +1040,7 @@ def main(argv = None):
     parser.add_option('-i', '--input-file', '--input')
     parser.add_option('-u', '--unpack', action = 'store_true')
     parser.add_option('--mount-point')
-    parser.add_option('-p', '--project')
+    parser.add_option('-p', '--project') # dest = 'input_file'
     parser.add_option('-v', '--verbose', action = 'store_true')
     (options, args) = parser.parse_args(argv)
 

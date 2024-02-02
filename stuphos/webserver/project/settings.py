@@ -150,7 +150,9 @@ VMTEMPLATES = getConfig('vm-templates', 'AgentSystem') or DEFAULT_VMTEMPLATES
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [joinpath(WEB_PACKAGE_PATH, 'server/templates'), # stuphos/server/templates
+        'DIRS': [# Todo: remove this:
+                 joinpath(WEB_PACKAGE_PATH, 'server/templates'), # stuphos/server/templates
+
                  joinpath(PACKAGES_PATH, 'implementations/person/services/web/templates'),
                  joinpath(PACKAGES_PATH, VMTEMPLATES)] +
 

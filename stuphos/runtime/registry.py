@@ -94,25 +94,45 @@ class Access(object): # todo: inherit from runtime.structure.Object? and builtin
         #
         return object.__getattribute__(self, name) \
                if name.startswith('_') \
-                  else Access.Node(None, name, self._callCreate)
+                  else Access.Node \
+                      (None, name, self._callCreate)
+
+    @classmethod
+    def nodeName(self, node):
+        if isinstance(node, self.Node):
+            node = node._buildName()
+
+        if not isinstance(node, str):
+            raise ValueError(node)
+
+        return node
+
 
     def __getitem__(self, node):
-        if isinstance(node, self.Node):
-            node = node._buildName()
-
-        if not isinstance(node, str):
-            raise ValueError(node)
-
-        return getObject(node)
+        return getObject(self
+            .nodeName(node))
 
     def __delitem__(self, node):
-        if isinstance(node, self.Node):
-            node = node._buildName()
+        return delObject(self
+            .nodeName(node))
 
-        if not isinstance(node, str):
-            raise ValueError(node)
+    def recreateObject(self, node):
+        name = self.nodeName(node)
+        node = getObject(name)
 
-        return delObject(node)
+        if node is not None:
+            delObject(name) # XXX not node)
+
+            return lambda *args, **kwd: \
+                getObject(name, create = \
+                    node.create, *args, **kwd)
+
+            # def recreate(*args, **kwd):
+            #     debugOn()
+            #     return getObject(name, create = \
+            #         node.create, *args, **kwd)
+
+            # return recreate
 
     def _callCreate(self, node, create = None, *args, **kwd):
         return getObject(node._buildName(),
@@ -292,7 +312,7 @@ def getRegistry(create = False):
     return registry
 
 # Access API:
-def getObject(name, create = None, **kwd):
+def getObject(name, create = None, **kwd): # *args, **kwd):
     reg = getRegistry()
     if reg is None:
         raise RegistryNotInstalled('Registry not installed.')
@@ -300,7 +320,7 @@ def getObject(name, create = None, **kwd):
     obj = reg.get(name, _undefined)
     if obj is _undefined:
         if callable(create):
-            obj = reg[name] = create(**kwd)
+            obj = reg[name] = create(**kwd) # (*args, **kwd)
         else:
             obj = None
 

@@ -5,227 +5,393 @@ from os.path import expandvars
 
 import json
 
+from stuphos.etc.tools.timing import dateOf
+
+
 class ConfigurationError(ValueError):
-	pass
+    pass
 
-class DBCore(dict):
-	'''
-	[DBCore]
-	primary.type = pg-auth
-	primary.path = db.conf
-	primary.host = 127.0.0.1
-	primary.port = 5432
-	secondary.type = sqlite
-	secondary.path = sqlite:/etc/db.sqlite
+class fsOpCore:
+    # copyfile returns dst
+    # from shutil import copyfile as pathCopy
+    # pathCopy = staticmethod(pathCopy)
 
-	'''
+    # def pathCopy(self, src, dst):
+    #     from shutil import copyfile
+    #     copyfile(src, dst)
 
-	class PGAuthConfiguration:
-		ENGINE = 'django.db.backends.postgresql_psycopg2'
+    #     return dst
 
-		DEFAULT_PG_HOST = 'localhost' # '127.0.0.1'
-		DEFAULT_PG_PORT = 5432
+    # XXX shutil.move does a copy...
+    # but it also returns dst
+    from shutil import move as shutilMove
+    shutilMove = staticmethod(shutilMove)
 
-		def __init__(self, **kwd):
-			self.path = kwd['path'] # assert exists
-			self.host = kwd.get('host') #, self.DEFAULT_PG_HOST)
-			self.port = kwd.get('port') #, self.DEFAULT_PG_PORT)
+    def pathMove(self, src, dst):
+        return self.shutilMove \
+            (src, dst, copy_function = None)
 
-		@property
-		def connectionString(self):
-			if self.host or isinstance(self.port, int) or \
-			    isinstance(self.port, str) and self.port.isdigit():
-				return buildPGINetConnectionURIAuto \
+
+    @classmethod
+    def pathNextRotation(self, path):
+        return f'{path}-{dateOf()}'
+
+
+    def rotate(self, name, *args, **kwd):
+        return self[name].rotate \
+            (self, *args, **kwd)
+
+
+    class configuration:
+        filepathAttr = 'filepath'
+
+        def rotate(self, core, target): # , *args, **kwd):
+            path = getattr(self, self.filepathAttr)
+
+            return core.pathMove \
+                (path, core.pathNextRotation \
+                    (path) if target is None \
+                        else target)
+
+
+class DBCore(dict, fsOpCore):
+    '''
+    [DBCore]
+    primary.type = pg-auth
+    primary.path = db.conf
+    primary.host = 127.0.0.1
+    primary.port = 5432
+    secondary.type = sqlite
+    secondary.path = sqlite:/etc/db.sqlite
+
+    '''
+
+    class PGAuthConfiguration:
+        ENGINE = 'django.db.backends.postgresql_psycopg2'
+
+        DEFAULT_PG_HOST = 'localhost' # '127.0.0.1'
+        DEFAULT_PG_PORT = 5432
+
+        def __init__(self, **kwd):
+            self.path = kwd['path'] # assert exists
+            self.host = kwd.get('host') #, self.DEFAULT_PG_HOST)
+            self.port = kwd.get('port') #, self.DEFAULT_PG_PORT)
+
+        @property
+        def connectionString(self):
+            if self.host or isinstance(self.port, int) or \
+                isinstance(self.port, str) and self.port.isdigit():
+                return buildPGINetConnectionURIAuto \
                                     (authfile = self.path,
                                      port = self.port,
                                      host = self.host)
 
-			return buildPGLocalConnectionURIAuto(authfile = self.path)
+            return buildPGLocalConnectionURIAuto(authfile = self.path)
 
-		@property
-		def djangoDatabaseConfig(self):
-			(dbName, username, password) = readPGAuthAuto(self.path)
+        @property
+        def djangoDatabaseConfig(self):
+            (dbName, username, password) = readPGAuthAuto(self.path)
 
-			cfg = {'NAME': dbName,
-			       'ENGINE': self.ENGINE,
-			       'USER': username,
-			       'PASSWORD': password}
+            cfg = {'NAME': dbName,
+                   'ENGINE': self.ENGINE,
+                   'USER': username,
+                   'PASSWORD': password}
 
-			if self.host or isinstance(self.port, int) or \
-			   isinstance(self.port, str) and self.port.isdigit():
-			    cfg['HOST'] = self.host or self.DEFAULT_PG_HOST
-			    cfg['PORT'] = int(self.port)
+            if self.host or isinstance(self.port, int) or \
+               isinstance(self.port, str) and self.port.isdigit():
+                cfg['HOST'] = self.host or self.DEFAULT_PG_HOST
+                cfg['PORT'] = int(self.port)
 
-			return cfg
+            return cfg
 
-		@property
-		def fields(self):
-			return dict(path = self.path,
-						host = self.host,
-						port = self.port)
+        @property
+        def fields(self):
+            return dict(path = self.path,
+                        host = self.host,
+                        port = self.port)
 
-	class SqliteConfiguration:
-		ENGINE = 'django.db.backends.sqlite3'
+    class SqliteConfiguration(fsOpCore.configuration):
+        ENGINE = 'django.db.backends.sqlite3'
 
-		def relative_path(self, path):
-			if not self.rootpath:
-				return path
-				raise ValueError('Cannot get relative path because no root-path is configured!')
+        def relative_path(self, path):
+            if not self.rootpath:
+                return path
+                raise ValueError('Cannot get relative path because no root-path is configured!')
 
-			return path.format(root = self.rootpath)
+            return path.format(root = self.rootpath)
 
-		def __init__(self, **fields):
-			try: self.rootpath = expandvars(fields['root-path'])
-			except KeyError:
-				self.rootpath = None
+        def __init__(self, **fields):
+            try: self.rootpath = expandvars(fields['root-path'])
+            except KeyError:
+                self.rootpath = None
 
-			try: self.filepath = expandvars(fields['file-path'])
-			except KeyError:
-				self.filepath = None
+            try: self.filepath = expandvars(fields['file-path'])
+            except KeyError:
+                self.filepath = None
 
-			try: self.path = expandvars(fields['path'])
-			except KeyError:
-				if self.filepath is None:
-					raise ConfigurationError('Sqlite databases must define at least file-path')
+            try: self.path = expandvars(fields['path'])
+            except KeyError:
+                if self.filepath is None:
+                    raise ConfigurationError('Sqlite databases must define at least file-path')
 
-				self.path = f'{fields.get("protocol", "sqlite:")}{self.filepath}'
+                self.path = f'{fields.get("protocol", "sqlite:")}{self.filepath}'
 
-		@property
-		def connectionString(self):
-			return self.relative_path(self.path)
+        @property
+        def connectionString(self):
+            return self.relative_path(self.path)
 
-		@property
-		def djangoDatabaseConfig(self):
-			return dict(NAME = self.filepath,
-				        ENGINE = self.ENGINE,
-				        USER = '',
-				        PASSWORD = '')
+        @property
+        def djangoDatabaseConfig(self):
+            return dict(NAME = self.filepath,
+                        ENGINE = self.ENGINE,
+                        USER = '',
+                        PASSWORD = '')
 
-		@property
-		def fields(self):
-			# Q How is this used and should we include self.rootpath?
-			return dict(path = self.path,
-						filepath = self.filepath)
+        @property
+        def fields(self):
+            # Q How is this used and should we include self.rootpath?
+            return dict(path = self.path,
+                        filepath = self.filepath)
 
-	ConfigurationTypes = {'pg-auth': PGAuthConfiguration,
-						  'pg': PGAuthConfiguration,
-						  'postgres': PGAuthConfiguration,
-						  'sqlite': SqliteConfiguration}
+    ConfigurationTypes = {'pg-auth': PGAuthConfiguration,
+                          'pg': PGAuthConfiguration,
+                          'postgres': PGAuthConfiguration,
+                          'sqlite': SqliteConfiguration}
 
-	def buildConfiguration(self, **fields):
-		config = self.ConfigurationTypes[fields['type']]
-		return config(**fields)
+    def buildConfiguration(self, **fields):
+        config = self.ConfigurationTypes[fields['type']]
+        return config(**fields)
 
-	def installConfiguration(self, name, **fields):
-		cfg = self[name] = self.buildConfiguration(**fields)
-		return cfg
+    def installConfiguration(self, name, **fields):
+        cfg = self[name] = self.buildConfiguration(**fields)
+        return cfg
 
-	@classmethod
-	def Load(self, section = 'DBCore'):
-		# This is here for running web migrate --resync-db
-		#import pdb; pdb.set_trace()
+    @classmethod
+    def Load(self, section = 'DBCore'):
+        # This is here for running web migrate --resync-db
+        #import pdb; pdb.set_trace()
 
-		from stuphos import getSection
-		cfg = getSection(section)
-		assert cfg is not None
+        from stuphos import getSection
+        return self.LoadFromConfigSection \
+            (getSection(section))
 
-		dbs = dict()
+    @classmethod
+    def LoadFromConfig(self, ini, section = 'DBCore', build = False):
+        '''
+        db = db.value.schema.dbConnect \
+            (ini = ini.value) \
 
-		for o in cfg.options():
-			(name, field) = o.split('.', 1)
-			d = dbs.setdefault(name, dict())
-			d[field] = cfg.get(o)
+        <- ini:
+            path: variables/domain
 
-		return self.LoadFromDBConfig(dbs)
+        <- db:
+            schema(db):
+                memory: schema-only
 
-	@classmethod
-	def LoadFromDBConfig(self, dbs):
-		# Validate while building.
-		core = self()
-		for (name, fields) in dbs.items():
-			core.installConfiguration(name, **fields)
+                data(table):
+                    - data: string
 
-		return core
+        '''
 
-	def InitializeForThread(self, name = None):
-	    self.hub.threadConnection = None if name is None else self.getConnection(name)
-	def InitializeForProcess(self, name = None):
-	    self.hub.processConnection = None if name is None else self.getConnection(name)
+        from stuphos.management.config \
+            import loadConfigSectionFromString
 
-	@property
-	def hub(self):
-	    from sqlobject import sqlhub
-	    return sqlhub
+        return self.LoadFromConfigSection \
+            (loadConfigSectionFromString \
+                (f'[{section}]\n{ini}' if build
+                 else ini, section))
+
+    @classmethod
+    def LoadFromConfigSection(self, cfg):
+        assert cfg is not None
+
+        dbs = dict()
+
+        for o in cfg.options():
+            (name, field) = o.split('.', 1)
+            d = dbs.setdefault(name, dict())
+            d[field] = cfg.get(o)
+
+        return self.LoadFromDBConfig(dbs)
+
+    @classmethod
+    def LoadFromDBConfig(self, dbs):
+        # Validate while building.
+        core = self()
+        for (name, fields) in dbs.items():
+            core.installConfiguration(name, **fields)
+
+        return core
+
+    def InitializeForThread(self, name = None):
+        self.hub.threadConnection = None if name is None else self.getConnection(name)
+    def InitializeForProcess(self, name = None):
+        self.hub.processConnection = None if name is None else self.getConnection(name)
+
+    @property
+    def hub(self):
+        from sqlobject import sqlhub
+        return sqlhub
 
 
-	class ConnectionDescriptor:
-		def __init__(self, connectString):
-			self.connectString = connectString
+    class ConnectionDescriptor:
+        def __init__(self, connectString):
+            self.connectString = connectString
 
-		def __call__(self):
-			return self.connectString
+        def __call__(self):
+            return self.connectString
 
 
-	def getConnection(self, name):
-		if isinstance(name, self.ConnectionDescriptor):
-			connect = name()
-		else:
-			connect = self[name].connectionString
+    def getConnection(self, name):
+        if isinstance(name, self.ConnectionDescriptor):
+            connect = name()
+        else:
+            connect = self[name].connectionString
 
-		from sqlobject import connectionForURI
-		return connectionForURI(connect)
+        from sqlobject import connectionForURI
+        return connectionForURI(connect)
 
-	def getDjangoDatabaseConfig(self, name):
-	   	return self[name].djangoDatabaseConfig
+    def getDjangoDatabaseConfig(self, name):
+        return self[name].djangoDatabaseConfig
 
-	@contextmanager
-	def hubThread(self, name, allowNone = False):
-		if name is None and allowNone:
-			yield None
-		else:
-			hub = self.hub
-			try: prev = hub.threadConnection
-			except AttributeError: prev = None
+    @contextmanager
+    def hubThread(self, name, allowNone = False):
+        if name is None and allowNone:
+            yield None
+        else:
+            hub = self.hub
+            try: prev = hub.threadConnection
+            except AttributeError: prev = None
 
-			conn = hub.threadConnection = self.getConnection(name)
+            conn = hub.threadConnection = self.getConnection(name)
 
-			try: yield conn
-			finally:
-				hub.threadConnection = prev
+            try: yield conn
+            finally:
+                hub.threadConnection = prev
 
-	@contextmanager
-	def hubProcess(self, name):
-		hub = self.hub
-		try: prev = hub.processConnection
-		except AttributeError: prev = None
+    @contextmanager
+    def hubProcess(self, name):
+        hub = self.hub
+        try: prev = hub.processConnection
+        except AttributeError: prev = None
 
-		conn = hub.processConnection = self.getConnection(name)
+        conn = hub.processConnection = self.getConnection(name)
 
-		try: yield conn
-		finally:
-			hub.processConnection = prev
+        try: yield conn
+        finally:
+            hub.processConnection = prev
+
+
+    @classmethod
+    def connect_pgAuth(self, path, host, port):
+        '''
+        def stuphConnect(conf):
+            return 'kernel/lookup$'('stuphos.db.conf.dbCore') \
+                .connect_pgAuth(io.here.restricted \
+                    (conf.get('authpath', 'lib/auth.conf')) \
+                    .write('\n'.join([conf.auth.username, \
+                        conf.auth.password]), \
+                    conf.network, conf.port)
+
+
+        def hostConnect(host, port, username, password):
+            return stuphConnect(mapping(network = host, \
+                port = port, auth = mapping(username = \
+                username, password = password)))
+
+
+        core = createWrapper(dbConnect = \
+            act(hostConnect, .value)) <- instance$:
+
+            - 'remote.network..'
+            - 9000
+
+            - stuph
+            - stuph
+
+
+        def perm_runCore(core, scope, access):
+            return act(perm_runCore_algo, \
+                [core, scope, access.related \
+                (checkAccess), access] + \
+                args$slice(2), keywords$())
+
+            usage:
+                remote/network/gen/com::
+                    def system(signature):
+                        return 'kernel/URL'(payload.strip().format \
+                            (payload = ''.join(args$()))).get() <- payload:
+
+                            https://network/{payload}
+
+
+                local:
+                    interfaces/views::
+                        (alias): "www/public/script/execute?return act('code/network$bound', 'payload=').content"
+
+                    code::
+                        # Core-scope-system-identity binding
+                        access = security$context$new()
+
+                        network$bound = action(perm_runCore, core, \
+                            scope.value, access, 'gen/com/system', \
+                            act(signature, iv.value + [access.principal, \
+                            taskId()]), scope = scope.value) <- iv:
+
+                            []
+
+                        <- scope:
+                            - system/identities
+                            - permission
+
+                            - remote
+                            - network
+                            - ''
+                            - ''
+
+
+        def perm_runCore_algo(core, scope, accessCheck, accessCall, path):
+            if is$security$context(accessCheck) and \
+                is$security$context(accessCall):
+
+                if accessCheck.nativeIs(checkAccess):
+                    kwd = keywords$()
+
+                    accessCheck(scope + [path], 'read')
+
+                    return act(core, [string(path)] + \
+                        args$slice(5), kwd)
+
+        '''
+
+        from sqlobject import connectionForURI
+
+        return self.ConnectionDescriptor(connectionForURI \
+            (self.PGAuthConfiguration(path = path, \
+             host = host, port = port).connectionString))
+
 
 class DynamicDBCore(DBCore):
-	@classmethod
-	def Load(self, master, masterNamespace = 'primary'):
-		return self(master, masterNamespace)
+    @classmethod
+    def Load(self, master, masterNamespace = 'primary'):
+        return self(master, masterNamespace)
 
-	def __init__(self, master, masterNamespace):
-		self.master = master
-		self.masterNamespace = masterNamespace
+    def __init__(self, master, masterNamespace):
+        self.master = master
+        self.masterNamespace = masterNamespace
 
-	def loadConfig(self, name):
-		from .orm import DBConf
+    def loadConfig(self, name):
+        from .orm import DBConf
 
-		with master.hubThread(self.masterNamespace):
-			for cfg in DBConf.selectBy(name = name):
-				return self.buildConfiguration(**json.loads(cfg.fields))
+        with master.hubThread(self.masterNamespace):
+            for cfg in DBConf.selectBy(name = name):
+                return self.buildConfiguration(**json.loads(cfg.fields))
 
-	def saveConfig(self, name, cfg):
-		from .orm import DBConf
+    def saveConfig(self, name, cfg):
+        from .orm import DBConf
 
-		with master.hubThread(self.masterNamespace):
-			DBConf(name = name, fields = json.dumps(cfg.fields)).save()
+        with master.hubThread(self.masterNamespace):
+            DBConf(name = name, fields = json.dumps(cfg.fields)).save()
 
 
 # PG

@@ -8,6 +8,14 @@ def getCurrentTime():
 	return datetime.fromtimestamp(now())
 date = getCurrentTime
 
+
+DATEOF_FORMAT = '%b%dth%Y'
+def dateOf(format = DATEOF_FORMAT):
+    return getCurrentTime() \
+    	.strftime(format) \
+            .lower()
+
+
 # todo: better naming
 class Elapsed:
 	def __init__(self):

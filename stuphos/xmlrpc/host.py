@@ -21,8 +21,15 @@ from stuphos import enqueueHeartbeatTask, logException
 from stuphos.etc import nth, reraiseSystemException, getSystemExceptionString, isYesValue
 from stuphos.etc.tools.timing import getCurrentTime as now
 
+# Todo: set this on config
 ALLOWED_PORT_ORIGINS = [#8000,
-                        2180, None, 443]
+                        2180, None, 443] # , 7080]
+
+apo = configuration.XMLRPC.allow_port_origins
+if apo:
+    ALLOWED_PORT_ORIGINS += list(map(int, apo.split('\n')))
+
+del apo
 
 # CSRF Access Control.
 def getOriginAccess(request, origin):

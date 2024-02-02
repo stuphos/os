@@ -43,6 +43,7 @@ from contextlib import contextmanager
 from socketserver import BaseServer
 
 from http.client import HTTPResponse as baseHTTPResponse
+from os.path import expandvars
 
 import os
 import sys
@@ -223,6 +224,79 @@ class Instrument:
     ##    from .tracking import onPasswordChange
     ##    from .tracking import onPlayerSavePoint
     pass
+
+
+class runtimeCompiler: # (coroActivityCompilerClass):
+    '''
+    def recreateWebserver():
+        return __runtime('Django::Service', 'recreate')
+
+    def setupWebserverAdmin(name):
+        grant(name, '/'.join(map
+            (string.strip, wm(
+
+                # Inline
+                # ::
+                    """
+                    - 'system:runtime'
+                    - 'Django::Service'
+                    - recreate
+
+                    """
+
+                ))), call')
+
+        return native('security$context$new', name) \
+            .action(recreateWebserver)
+
+    '''
+
+    # class Init: _setContextClass, contextClass, coroutineInterfaceClass
+
+    # @alias('coroContextClass')
+    class methodContext:
+        @classmethod
+        def runtimeCallNative(self, frame, name, method, *args, **kwd):
+            frame.task.checkAccess(['system:runtime', name, method], 'call') # System?
+            return getattr(runtime[name], method)(*args, **kwd)
+
+        def runtimeCall(self, context, kwd, *args):
+            return self.runtimeCallNative(context.frame, *args, **kwd)
+
+
+    @classmethod
+    def renderNode(self, *args, **kwd):
+        return self.runtimeGenCompiler() \
+            .visit(*args, **kwd)
+
+
+    class runtimeGenCompiler:
+        class runtimeGenCall: # (visit_Node):
+            _method = 'runtimeCall'
+
+            def indirection_args_genCall(self, name, method, args, kwd): # t, node, kwd):
+                return (name, method, kwd) + args
+
+            def indirection_args_genCallNode(self, t, node, kwd):
+                return self.indirection_args_genCall \
+                    (self.indirection(node.method),
+                     self.indirection(node.args[0]),
+                     self.indirection_seq(node.args[1:]),
+                     node.keywords)
+
+            def indirection_args_enter_genCallNode(self, t, node, kwd):
+                if node.method.value.id == '__runtime':
+                    return self.indirection_args_genCallNode \
+                        (t, Call(node.args[0], node.args[1:],
+                                 node.keywordrs), kwd)
+
+
+        class visit_ASTCall(runtimeGenCall):
+            # indirection_args = runtimeGenCall \
+            #     .indirection_args_enter_genCallNode
+
+            pass
+
 
 class EmbeddedRequestHandler(WSGIRequestHandler):
     # Provide configurable ServerHandler.server_software
@@ -594,6 +668,10 @@ class DjangoService(Facility, ServerControl, WSGIServer, Instrument):
                 certfile, keyfile, software, urlConf)
 
     @classmethod
+    def getServiceConfig(self, name, *args, **kwd):
+        return getConfig(name, 'DjangoService', *args, **kwd)
+
+    @classmethod
     def parseConfig(self, getConfig = getConfig):
         hostname = getConfig('hostname', 'DjangoService') or self.HOSTNAME
         port = int(getConfig('port', 'DjangoService') or self.PORT)
@@ -638,7 +716,7 @@ class DjangoService(Facility, ServerControl, WSGIServer, Instrument):
         return result
 
     @classmethod
-    def create(self):
+    def create(self, no_djangoConfig = False):
         from phsite.network.embedded import install, uninstall
         install()
 
@@ -652,7 +730,8 @@ class DjangoService(Facility, ServerControl, WSGIServer, Instrument):
              certfile, keyfile, software, urlConf) = \
                 self.GetConfig()
 
-            djangoConfig()
+            if not no_djangoConfig:
+                djangoConfig()
 
             #wsgi_handler = AdminMediaHandler(WSGIHandler(), admin_media_path)
             # self.__class__._wsgi_handler = 
@@ -670,6 +749,36 @@ class DjangoService(Facility, ServerControl, WSGIServer, Instrument):
             raise
 
         return server
+
+
+    @classmethod
+    def recreate(self): # , value = None):
+        '''
+        interfaces/gen/webserver::
+            reload(view):
+                context(trigger)::
+                    recreate = runtime \
+                        [runtime.Django.Service] \
+                            .recreate() # '/'.join(path) \
+                                # .format())
+
+                    sleep(integer(request \
+                        .GET.get('wait', 10)))
+
+                    return mapping(redirectUrl \
+                        = recreate().getServiceConfig \
+                            ('front-page', ''))
+
+        '''
+
+        recreate = runtime \
+            .recreateObject  \
+                (self.NAME)
+
+        return lambda: recreate \
+            (no_djangoConfig = True)
+            # and value
+
 
     @classmethod
     def newServerConfig(self, **values):
@@ -726,11 +835,14 @@ class DjangoService(Facility, ServerControl, WSGIServer, Instrument):
         else:
             import ssl
 
+            certfile = expandvars(certfile)
+
             kwd = dict(certfile = certfile)
 
             if keyfile is not None:
                 kwd['keyfile'] = keyfile
 
+            # Todo: catch FileNotFoundError and possibly print cert/keyfile paths
             self.socket = ssl.wrap_socket (self.socket, server_side = True, **kwd)
 
         self.set_app(wsgi_handler)
@@ -789,6 +901,7 @@ class DjangoService(Facility, ServerControl, WSGIServer, Instrument):
     def getStatus(self):
         return '{%s: %s}\n%s' % (self.__class__.__name__, self.runningState(),
                                  GetURLConf(indent = '  '))
+
 
 @contextmanager
 def ReloadEmbeddedUrlConf(urlConf = None):

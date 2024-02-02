@@ -5,7 +5,7 @@ import sys, os
 try: import pdb
 except ImportError: pass
 
-def parseCmdln(argv = None):
+def parseCmdln(argv = None, continuator = '--', exe = False):
     parser = OptionParser()
 
     parser.add_option('-C', '--config-file', '--config', '--game-config')
@@ -47,6 +47,10 @@ def parseCmdln(argv = None):
     parser.add_option('--parser-tokenize', action = 'store_true')
     parser.add_option('--elemental-parser-debug', '--parser-debug')
 
+    parser.add_option('--stdout')
+    parser.add_option('--stderr')
+    parser.add_option('--logfile', '--syslog')
+
     parser.add_option('-L', '--data-dir', '--lib-dir')
     # parser.add_option('--libdata')
 
@@ -63,7 +67,28 @@ def parseCmdln(argv = None):
     parser.add_option('--agent-system')
     parser.add_option('--local', '--local-filesystem')
 
+    if continuator:
+        try: return parseCmdlnContinuator(parser, continuator, argv, exe = exe)
+        except ValueError: pass
+
     return parser.parse_args(argv)
+
+
+def parseCmdlnContinuator(parser, continuator, argv = None, exe = False):
+    if argv is None:
+        from sys import argv
+
+        if exe:
+            argv = argv[1:]
+
+
+    i = argv.index(continuator)
+
+    (options, args) = parser.parse_args(argv[:i])
+
+    args += argv[i+1:]
+
+    return (options, args)
 
 
 def getCmdln(argv = None):
@@ -119,8 +144,13 @@ class ConsoleBusiness:
     def handleConsoleInput(self):
         'Interpret player input as command for avatar.'
 
+        # Manage Core Component.
+        self.engine.parallel_bootNotify_wait()
+
         try:
-            self.forceInput(self.readConsoleInput())
+            if not self.hasInput():
+                self.forceInput(self.readConsoleInput())
+
             if self.debug:
                 return pdb.runcall(self.handleNextInput)
 

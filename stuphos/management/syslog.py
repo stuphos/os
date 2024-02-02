@@ -671,11 +671,17 @@ from time import time as now
 class Journal(Facility):
     NAME = 'System::Journal'
 
-    def __init__(self):
+    @classmethod
+    def create(self, *args, **kwd):
+        return self(*args, **kwd)
+
+    def __init__(self, getConfig = getConfig):
          # [mud/runtime/core.py:225] installServices
          #   Logging.get(create = True)
 
         # self.taskWaiters = dict()
+        # Why I'm calling this 'database' and not 'namespace'...
+        # debugOn()
         self.dbNamespace = getConfig('database', 'Logging')
 
         self.queue = Queue()
@@ -683,16 +689,124 @@ class Journal(Facility):
         if self.init() is not False:
             self.startStream()
 
+
+    @property
+    def dbCore(self):
+        # from stuphos.db import dbCore
+        return dbCore
+
+    def dbCoreOf(self, dbCore = None):
+        return self.dbCore if dbCore \
+            is None else dbCore
+
+    @property
+    def dbOrmOf(self):
+        from stuphos.db import orm
+        return orm
+
+    @property
+    def tableOf(self):
+        return self.dbOrmOf.Log
+
+
+    def rotate_parallel(self, task, *args, **kwd):
+        return self.rotate(*args, **kwd)
+
+    def rotate(self, target = None, *args, **kwd):
+        '''
+        # Note: do this when logging table is in its own database.
+
+
+        # logrotate = parallelizedOf \\
+        #     (::
+        #         return __runtime('System::Journal', 'rotate')
+
+        #      .compiled)
+
+
+        # ./mc --no-init --network=false -n \\
+        # -SLogging:database=logging -c \\
+        #    "@'kernel/moduleOf'(compile, 'stuphos.management.syslog.Journal.rotate')()"
+
+        runtime = 'kernel/lookup$'('builtins.runtime')
+        log = runtime[runtime.System.Journal]
+
+        log = log.recreate()('logging')
+
+        return (keywords$('parallelizedOf', none) or \\
+            runtime[runtime.System.Engine.Pool] \\
+                .pool.forTaskCurrent(false, false)) \\
+
+                (log.rotate_parallel) # ()
+
+        '''
+
+        dbCore = self.dbCore
+
+        # XXX Why the F is self.dbNamespace not set via commandline?
+        # debugOn()
+
+        r = dbCore.rotate(self.dbNamespace,
+            target, *args, **kwd)
+
+        self.tableCreate(dbCore = dbCore)
+
+        return r
+
+
+    @classmethod
+    def recreate(self): # , namespace = None):
+        '''
+        recreate = runtime \
+            [runtime.System.Journal] \
+                .recreate()()
+
+        '''
+
+        from stuphos.management.config \
+            import loadConfigFromValues
+
+        # debugOn()
+        recreate = runtime \
+            .recreateObject  \
+                (self.NAME)
+
+        # def o(namespace = None):
+        #     debugOn()
+        #     r = recreate() if namespace is None else \
+        #         recreate(getConfig = loadConfigFromValues
+        #             (Logging = dict(database
+        #                 = namespace)).get)
+
+        #     return r
+        # return o
+
+        return lambda namespace = None: \
+            recreate() if namespace is None else \
+                recreate(getConfig = loadConfigFromValues
+                    (Logging = dict(database
+                        = namespace)).get)
+
+
     def init(self):
+        self.tableCreate()
+
+    def tableCreate(self, dbCore = None):
         if self.dbNamespace is None:
             return False
 
-        from stuphos.db.orm import Log, createSQLObjectTable
-        from stuphos.db import dbCore
+        orm = self.dbOrmOf
 
-        with dbCore.hubThread(self.dbNamespace):
-            createSQLObjectTable(Log)
+        with self.dbCoreOf(dbCore) \
+            .hubThread(self.dbNamespace):
 
+            orm.createSQLObjectTable \
+                (orm.Log)
+
+            # ?!?! hangs...?!?!
+            # debugOn()
+            # print()
+            # print(list(self.tableOf.select()))
 
     def processStream(self, write, get):
         # print(f'[vsz] starting stream: {psOpGameVsz()}')
@@ -766,13 +880,13 @@ class Journal(Facility):
         else:
             (source, type, content, timestamp) = msg
 
-        from stuphos.db.orm import Log
-        from stuphos.db import dbCore
+        # from stuphos.db.orm import Log
+        # from stuphos.db import dbCore
 
         # print(f'[vsz] writing log: {psOpGameVsz()}')
 
-        with dbCore.hubThread(self.dbNamespace):
-            try: Log(source = source, type = type,
+        with self.dbCore.hubThread(self.dbNamespace):
+            try: self.tableOf(source = source, type = type,
                      content = content,
                      timestamp = timestamp).sync()
 
@@ -795,9 +909,9 @@ class Journal(Facility):
 
         # print(f'[vsz] wrote log: {psOpGameVsz()}')
 
-    def copyToDB(self, fromNS, toNS):
-        from stuphos.db.orm import Log
-        from stuphos.db import dbCore
+    def copyToDB(self, fromNS, toNS, dbCore = None):
+        dbCore = self.dbCoreOf(dbCore)
+        Log = self.tableOf
 
         with dbCore.hubThread(fromNS):
             # Copy to memory.
@@ -840,8 +954,8 @@ class Journal(Facility):
 
     # todo: differentiate between logs: traceback, other?
     def getLogs(self, task = None, n = -1, taskName = None, preserve = False, type = 'traceback'):
-        from stuphos.db.orm import Log
-        from stuphos.db import dbCore
+        # from stuphos.db.orm import Log
+        # from stuphos.db import dbCore
 
         if task is None:
             assert taskName
@@ -849,8 +963,8 @@ class Journal(Facility):
             taskName = task.taskName
 
         assert n
-        with dbCore.hubThread(self.dbNamespace):
-            for log in Log.selectBy(source = taskName, type = type) \
+        with self.dbCore.hubThread(self.dbNamespace):
+            for log in self.tableOf.selectBy(source = taskName, type = type) \
                 .orderBy('timestamp'):
                 if n > 0:
                     n -= 1
@@ -867,15 +981,16 @@ class Journal(Facility):
                     break
 
     def iterate(self, **criteria):
-        from stuphos.db.orm import Log
-        from stuphos.db import dbCore
+        # from stuphos.db.orm import Log
+        # from stuphos.db import dbCore
 
-        with dbCore.hubThread(self.dbNamespace):
-            return iter(Log.selectBy(**criteria).orderBy('timestamp'))
+        with self.dbCore.hubThread(self.dbNamespace):
+            return iter(self.tableOf.selectBy
+                (**criteria).orderBy('timestamp'))
     __iter__ = iterate
 
     def deleteAllType(self, type):
-        with dbCore.hubThread(self.dbNamespace):
+        with self.dbCore.hubThread(self.dbNamespace):
             for e in self.iterate(type = type):
                 e.delete(e.id)
 
