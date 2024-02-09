@@ -2,11 +2,11 @@
   [[["accessCheck", "seglo", "seghi", "ptlo", "pthi", "data"],
     [["&&", ["accessCheck", [["+", "seglo", "sehi"]]],
       [["?", "data", ["=", ["[]", ["[]", ["[]", "data",
-            ["{}", "seglo", "seghi"]], ["{}", "ptlo", "pthi"]]],
-                ["[]", "data", ["{}", "ptlo", "pthi"]]],
+        ["{}", "seglo", "seghi"]], ["{}", "ptlo", "pthi"]]],
+          ["[]", "data", ["{}", "ptlo", "pthi"]]],
 
         ["[]", ["[]", "data", ["{}", "seglo", "seghi"]],
-            ["{}", "ptlo", "pthi"]]]]]]],
+          ["{}", "ptlo", "pthi"]]]]]]],
 
    [[["n"], [true]], 0, 1000000, 100, 200,
     ["{}", [["{}", ["ptlo", 100], ["pthi", 200]],
