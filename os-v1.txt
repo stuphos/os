@@ -1,4 +1,4 @@
-{"pi.json":
+["pi.json",
   [[["accessCheck", "seglo", "seghi", "ptlo", "pthi", "data"],
     [["&&", ["accessCheck", [["+", "seglo", "sehi"]]],
       [["?", "data", ["=", ["[]", ["[]", ["[]", "data",
@@ -14,4 +14,4 @@
 
     ["{}", [["{}", ["seglo", 0], ["seghi", 1000000]],
       ["{}", [["{}", ["ptlo", 100], ["pthi", 200]]],
-        ["{}", ["value", null]]]]]
+        ["{}", ["value", null]]]]]]]]
